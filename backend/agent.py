@@ -12,6 +12,7 @@ from contextvars import ContextVar
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
+from pydantic_ai.mcp import MCPServerStdio
 from pydantic_ai.models.openai import OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -216,11 +217,14 @@ def create_agent(session_id: str) -> Agent:
     # Load system prompt
     system_prompt = load_system_prompt()
     
+    mcp_servers = [MCPServerStdio('python', ['backend/mcp_server.py'])]
+    
     # Create agent (tools will be provided via MCP)
     agent = Agent(
         model=model,
         system_prompt=system_prompt,
-        retries=settings.max_tool_retries
+        retries=settings.max_tool_retries,
+        mcp_servers=mcp_servers,
     )
     
     # Attach conversation manager
