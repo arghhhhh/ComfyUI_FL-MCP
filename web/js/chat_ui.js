@@ -57,7 +57,7 @@ export class ChatUI {
         layout.className = 'fl-chat-layout';
         layout.innerHTML = `
             <div class="fl-chat-header">
-                <div class="fl-chat-title">FL_JS Assistant</div>
+                <div class="fl-chat-title">FL Agent</div>
                 <div class="fl-chat-status">
                     <span class="fl-status-indicator" id="fl-status-indicator"></span>
                     <span class="fl-status-text" id="fl-status-text">Connecting...</span>

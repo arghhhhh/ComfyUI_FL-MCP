@@ -9,8 +9,36 @@
  * - Event-driven architecture for message handling
  */
 
-class WSClient {
+/**
+ * Simple EventEmitter implementation
+ */
+class EventEmitter {
+    constructor() {
+        this.events = {};
+    }
+    
+    on(event, listener) {
+        if (!this.events[event]) {
+            this.events[event] = [];
+        }
+        this.events[event].push(listener);
+    }
+    
+    emit(event, ...args) {
+        if (this.events[event]) {
+            this.events[event].forEach(listener => listener(...args));
+        }
+    }
+    
+    off(event, listenerToRemove) {
+        if (!this.events[event]) return;
+        this.events[event] = this.events[event].filter(listener => listener !== listenerToRemove);
+    }
+}
+
+class WSClient extends EventEmitter {
     constructor(sessionId, config = {}) {
+        super();
         this.sessionId = sessionId;
         this.ws = null;
         
@@ -33,16 +61,6 @@ class WSClient {
         this.reconnectTimeout = null;
         this.messageQueue = [];
         
-        // Event handlers (can be overridden)
-        this.onConnect = null;
-        this.onDisconnect = null;
-        this.onHandshakeAck = null;
-        this.onAgentResponse = null;
-        this.onToolRequest = null;
-        this.onTypingIndicator = null;
-        this.onError = null;
-        this.onMaxReconnectReached = null;
-        
         console.log('[WSClient] Initialized with session:', this.sessionId);
     }
 
@@ -56,6 +74,7 @@ class WSClient {
         }
 
         console.log('[WSClient] Connecting to:', this.config.url);
+        this.emit('connecting');
         
         try {
             this.ws = new WebSocket(this.config.url);
@@ -85,10 +104,7 @@ class WSClient {
         // Start heartbeat
         this.startHeartbeat();
         
-        // Trigger onConnect callback
-        if (this.onConnect) {
-            this.onConnect();
-        }
+        this.emit('connected');
     }
 
     /**
@@ -102,10 +118,7 @@ class WSClient {
         // Stop heartbeat
         this.stopHeartbeat();
         
-        // Trigger onDisconnect callback
-        if (this.onDisconnect) {
-            this.onDisconnect(event);
-        }
+        this.emit('disconnected', event);
         
         // Attempt reconnection
         this.attemptReconnect();
@@ -116,10 +129,7 @@ class WSClient {
      */
     handleError(error) {
         console.error('[WSClient] WebSocket error:', error);
-        
-        if (this.onError) {
-            this.onError(error);
-        }
+        this.emit('error', error);
     }
 
     /**
@@ -143,28 +153,20 @@ class WSClient {
                     break;
                 
                 case 'agent_response':
-                    if (this.onAgentResponse) {
-                        this.onAgentResponse(message);
-                    }
+                    this.emit('agent_response', message);
                     break;
                 
                 case 'tool_request':
-                    if (this.onToolRequest) {
-                        this.onToolRequest(message);
-                    }
+                    this.emit('tool_request', message);
                     break;
                 
                 case 'typing_indicator':
-                    if (this.onTypingIndicator) {
-                        this.onTypingIndicator(message);
-                    }
+                    this.emit('typing_indicator', message);
                     break;
                 
                 case 'error':
                     console.error('[WSClient] Server error:', message.error_code, message.message);
-                    if (this.onError) {
-                        this.onError(message);
-                    }
+                    this.emit('error', message);
                     break;
                 
                 case 'pong':
@@ -202,10 +204,7 @@ class WSClient {
         // Process queued messages
         this.flushMessageQueue();
         
-        // Trigger callback
-        if (this.onHandshakeAck) {
-            this.onHandshakeAck(message);
-        }
+        this.emit('handshake_ack', message);
     }
 
     /**
@@ -247,9 +246,7 @@ class WSClient {
         // Check if max attempts reached
         if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
             console.error('[WSClient] Max reconnection attempts reached');
-            if (this.onMaxReconnectReached) {
-                this.onMaxReconnectReached();
-            }
+            this.emit('max_reconnect_reached');
             return;
         }
         

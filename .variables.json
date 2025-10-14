@@ -1,10 +1,10 @@
 {
-  "current_mode": "design",
+  "current_mode": "implementation",
   "project": "fl_js",
-  "task": "evaluate import pattern options",
+  "task": "removing unnecessary legacy callback code",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
-  "focus": "choosing between relative imports vs package imports for ComfyUI custom node",
+  "focus": "stripping out old callback properties and if checks",
   "plans_created": "6 detailed implementation plans + summary",
   "next_step": "create backend directory structure and config files",
   "ui_integration": "app.extensionManager.registerSidebarTab",
@@ -37,13 +37,11 @@
     "graceful shutdown"
   ],
   "files_modified": [
-    "__init__.py",
-    "backend/config.py",
-    ".env.example",
-    "README.md"
+    "web/js/ws_client.js",
+    "web/js/extension.js"
   ],
   "phase_2_step": "complete",
-  "analysis_complete": "true",
+  "analysis_complete": "false",
   "files_completed": [
     "backend/callback_router.py",
     "web/js/fl_api.js",
@@ -53,5 +51,10 @@
     "web/js/extension.js"
   ],
   "features_designed": "start_button, settings_tab",
-  "issue_location": "__init__.py line 33 and server.py line 373"
+  "issue_location": "__init__.py line 33 and server.py line 373",
+  "notes_created": [
+    "notes/ws/analysis.md",
+    "notes/ws/investigation.md",
+    "notes/ws/implementation.md"
+  ]
 }

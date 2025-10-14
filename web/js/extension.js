@@ -49,43 +49,43 @@ app.registerExtension({
             toolExecutor = new ToolExecutor(wsClient);
             console.log("[FL_JS] Tool executor initialized");
             
-            // Set up WebSocket event handlers
-            wsClient.onConnect = () => {
+            // Set up WebSocket event handlers using new event emitter pattern
+            wsClient.on('connected', () => {
                 console.log("[FL_JS] Connected to backend server");
-            };
+            });
             
-            wsClient.onDisconnect = (event) => {
+            wsClient.on('disconnected', (event) => {
                 console.log("[FL_JS] Disconnected from backend server:", event.code);
-            };
+            });
             
-            wsClient.onHandshakeAck = (message) => {
+            wsClient.on('handshake_ack', (message) => {
                 console.log("[FL_JS] Handshake complete:", message.status);
                 if (message.status === 'reconnected') {
                     console.log("[FL_JS] Reconnected to existing session");
                 }
-            };
+            });
             
-            wsClient.onAgentResponse = (message) => {
+            wsClient.on('agent_response', (message) => {
                 console.log("[FL_JS] Agent response received:", message.content);
-            };
+            });
             
-            wsClient.onToolRequest = async (message) => {
+            wsClient.on('tool_request', async (message) => {
                 console.log("[FL_JS] Tool request received:", message.tool_name);
                 // Execute tool via tool executor
                 await toolExecutor.executeToolRequest(message);
-            };
+            });
             
-            wsClient.onTypingIndicator = (message) => {
+            wsClient.on('typing_indicator', (message) => {
                 console.log("[FL_JS] Agent is typing...");
-            };
+            });
             
-            wsClient.onError = (error) => {
+            wsClient.on('error', (error) => {
                 console.error("[FL_JS] Error:", error);
-            };
+            });
             
-            wsClient.onMaxReconnectReached = () => {
+            wsClient.on('max_reconnect_reached', () => {
                 console.error("[FL_JS] Max reconnection attempts reached. Please check backend server.");
-            };
+            });
             
             // Store instances globally for other modules
             window.FL_JS = {
