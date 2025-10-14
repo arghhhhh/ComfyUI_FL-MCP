@@ -123,7 +123,7 @@ def get_llm_model():
     if settings.llm_provider == "openai":
         return OpenAIModel(
             settings.llm_model,
-            api_key=settings.openai_api_key
+            # api_key=settings.openai_api_key
         )
     elif settings.llm_provider == "openrouter":
         # OpenRouter uses OpenAI-compatible API
@@ -139,14 +139,14 @@ def get_llm_model():
         from pydantic_ai.models.anthropic import AnthropicModel
         return AnthropicModel(
             settings.llm_model,
-            api_key=settings.anthropic_api_key
+            # api_key=settings.anthropic_api_key
         )
     elif settings.llm_provider == "gemini":
         # Import here to avoid dependency if not used
         from pydantic_ai.models.gemini import GeminiModel
         return GeminiModel(
             settings.llm_model,
-            api_key=settings.google_api_key
+            # api_key=settings.google_api_key
         )
     else:
         raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
