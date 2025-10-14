@@ -42,7 +42,7 @@ class ConnectionManager:
         Returns:
             SessionContext for this session
         """
-        await websocket.accept()
+        # await websocket.accept()
         self.active_connections[session_id] = websocket
 
         # Get or create session context
