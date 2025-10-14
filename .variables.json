@@ -1,12 +1,13 @@
 {
-  "current_mode": "design",
+  "current_mode": "implementation",
   "project": "fl_js",
-  "task": "updated UI plan to use ComfyUI native sidebar",
+  "task": "Phase 1: Foundation - Setting up project structure",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
   "focus": "multi-client websocket handling and query DSL selection",
   "plans_created": "6 detailed implementation plans + summary",
-  "next_step": "begin Phase 1: Foundation",
+  "next_step": "create backend directory structure and config files",
   "ui_integration": "app.extensionManager.registerSidebarTab",
-  "reference_file": "legacy/NodePackLoader_SideBar.js"
+  "reference_file": "legacy/NodePackLoader_SideBar.js",
+  "progress_file": "notes/implementation/progress.md"
 }
