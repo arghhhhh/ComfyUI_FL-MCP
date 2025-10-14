@@ -1,13 +1,13 @@
 # FL_JS Agentic System - Implementation Progress
 
-**Last Updated:** 2025-10-14 (Session 1 - Phase 1 Complete!)
+**Last Updated:** 2025-10-14 (Session 1 - Phase 1.5 Research Complete)
 
 ---
 
-## 🎯 Overall Progress: 30%
+## 🎯 Overall Progress: 32%
 
 ```
-[===============>                                  ] 30/100
+[================>                                 ] 32/100
 ```
 
 ---
@@ -46,13 +46,75 @@
 
 ### 🎉 Phase 1 Complete!
 
-**Ready for end-to-end testing in ComfyUI!**
+**Backend and frontend foundations ready!**
 
 ---
 
-## Phase 2: Tool System (Week 2-3) - ☐ Not Started
+## Phase 1.5: ComfyUI Integration (Week 1) - 🔄 IN PROGRESS (50%)
 
-### ☐ Todo
+**Reference:** See [notes/comfy_research/implementation.md](../comfy_research/implementation.md) for full details
+
+### ✅ Completed
+
+#### Research & Planning
+- [x] Research ComfyUI custom node requirements
+- [x] Document findings in [notes/comfy_research/custom_nodes.md](../comfy_research/custom_nodes.md)
+- [x] Create integration plan in [notes/comfy_research/implementation.md](../comfy_research/implementation.md)
+- [x] Identify gaps in current structure
+- [x] Design extension-only approach
+
+### 🔄 In Progress
+
+#### Codebase Restructuring
+- [ ] Create root `__init__.py` with NODE_CLASS_MAPPINGS and WEB_DIRECTORY
+- [ ] Rename `frontend/` directory to `web/js/`
+- [ ] Move `session_manager.js` to `web/js/`
+- [ ] Move `ws_client.js` to `web/js/`
+- [ ] Update module exports to ES6 (export default)
+- [ ] Create `web/js/extension.js` as main entry point
+- [ ] Update README.md with ComfyUI installation instructions
+
+#### Testing
+- [ ] Test extension loads in ComfyUI without errors
+- [ ] Test WebSocket connects to backend
+- [ ] Test session management works
+- [ ] Test console logs show proper initialization
+- [ ] Test multi-window session independence
+- [ ] Test reconnection behavior
+
+### 📋 Key Changes Summary
+
+**New Files:**
+1. `__init__.py` (root) - ComfyUI node registration
+2. `web/js/extension.js` - Main extension entry point
+
+**Moved Files:**
+1. `frontend/session_manager.js` → `web/js/session_manager.js`
+2. `frontend/ws_client.js` → `web/js/ws_client.js`
+
+**Modified Files:**
+1. `web/js/session_manager.js` - Change to ES6 export
+2. `web/js/ws_client.js` - Change to ES6 export
+3. `README.md` - Update installation instructions
+
+**Deleted Directories:**
+1. `frontend/` (replaced by `web/js/`)
+
+### 🎯 Why Phase 1.5?
+
+During Phase 1 completion, we discovered our codebase doesn't conform to ComfyUI's custom node structure:
+- Missing root `__init__.py` with NODE_CLASS_MAPPINGS
+- Wrong directory structure (`frontend/` vs `web/js/`)
+- Missing main extension entry point
+- Using CommonJS instead of ES6 modules
+
+This mini-phase adapts our code to ComfyUI's requirements without changing functionality.
+
+---
+
+## Phase 2: Tool System (Week 2-3) - ⏸ Not Started
+
+### ⏸ Todo
 
 #### Backend Tool System
 - [ ] Implement backend/callback_router.py
@@ -60,8 +122,8 @@
 - [ ] Test callback routing
 
 #### Frontend Tool System
-- [ ] Implement frontend/fl_api.js (FL_JS wrapper)
-- [ ] Implement frontend/tool_executor.js
+- [ ] Implement web/js/fl_api.js (FL_JS wrapper)
+- [ ] Implement web/js/tool_executor.js
 - [ ] Test tool execution flow
 
 #### Tool Categories Implementation
@@ -75,12 +137,12 @@
 
 ---
 
-## Phase 3: Query & Agent (Week 4) - ☐ Not Started
+## Phase 3: Query & Agent (Week 4) - ⏸ Not Started
 
-### ☐ Todo
+### ⏸ Todo
 
 #### Query System
-- [ ] Implement frontend/query_executor.js
+- [ ] Implement web/js/query_executor.js
 - [ ] Test query execution
 
 #### Agent System
@@ -92,17 +154,16 @@
 
 ---
 
-## Phase 4: UI & Integration (Week 5) - ☐ Not Started
+## Phase 4: UI & Integration (Week 5) - ⏸ Not Started
 
-### ☐ Todo
+### ⏸ Todo
 
 #### Chat UI
-- [ ] Implement frontend/chat_ui.js
-- [ ] Implement frontend/diagram_generator.js
+- [ ] Implement web/js/chat_ui.js
+- [ ] Implement web/js/diagram_generator.js
 - [ ] Test UI rendering
 
 #### ComfyUI Integration
-- [ ] Implement frontend/extension.js
 - [ ] Register sidebar tab
 - [ ] Test in ComfyUI
 
@@ -114,9 +175,9 @@
 
 ---
 
-## Phase 5: Polish & Testing (Week 6) - ☐ Not Started
+## Phase 5: Polish & Testing (Week 6) - ⏸ Not Started
 
-### ☐ Todo
+### ⏸ Todo
 
 #### Testing
 - [ ] Write backend unit tests
@@ -140,7 +201,7 @@
 
 ## 📊 Statistics
 
-### Files Created: 14/30+
+### Files Created: 16/32+
 - ✅ README.md
 - ✅ .gitignore
 - ✅ requirements.txt
@@ -151,19 +212,22 @@
 - ✅ backend/models.py
 - ✅ backend/websocket.py
 - ✅ backend/server.py
-- ✅ frontend/session_manager.js
-- ✅ frontend/ws_client.js
+- ✅ frontend/session_manager.js (to be moved)
+- ✅ frontend/ws_client.js (to be moved)
 - ✅ notes/implementation/00_implementation_summary.md
 - ✅ notes/implementation/progress.md
+- ✅ notes/comfy_research/custom_nodes.md
+- ✅ notes/comfy_research/implementation.md
 
 ### Files Remaining: 16+
 - Backend: 4 files (agent.py, mcp_server.py, callback_router.py, utils.py)
-- Frontend: 6 files (fl_api.js, tool_executor.js, query_executor.js, chat_ui.js, diagram_generator.js, extension.js)
+- Frontend: 6 files (fl_api.js, tool_executor.js, query_executor.js, chat_ui.js, diagram_generator.js)
+- Integration: 2 files (__init__.py, extension.js) - **Phase 1.5**
 - Config: 0 files
 - Tests: 6+ files
 
-### Lines of Code: ~2,000/10,000+ (estimated)
-- Documentation: ~500 lines
+### Lines of Code: ~2,500/10,000+ (estimated)
+- Documentation: ~1,000 lines (including research notes)
 - Backend: ~900 lines
 - Frontend: ~600 lines
 
@@ -171,15 +235,21 @@
 
 ## 🎯 Current Focus
 
-**Phase 1 COMPLETE! 🎉**
+**Phase 1.5: ComfyUI Integration (50% complete)**
+
+**Research Complete! ✅**
+- Documented ComfyUI custom node requirements
+- Created detailed integration plan
+- Identified all necessary changes
 
 **Next Steps:**
-1. Test WebSocket connection end-to-end in ComfyUI
-2. Verify session management works
-3. Test reconnection behavior
-4. Move to Phase 2: Tool System
+1. Create root `__init__.py`
+2. Restructure `frontend/` to `web/js/`
+3. Create `extension.js` entry point
+4. Update module exports to ES6
+5. Test in ComfyUI
 
-**Current Blocker:** None - ready for testing!
+**Current Blocker:** None - ready to implement restructuring!
 
 **Estimated Time to MVP:** 3-4 weeks
 
@@ -201,6 +271,16 @@
 - ✅ Automatic reconnection with exponential backoff
 - ✅ Heartbeat/ping-pong monitoring
 - ✅ Message queueing during disconnection
+
+**2025-10-14 (Session 1 - Phase 1.5 Research):**
+- ✅ Researched ComfyUI custom node structure requirements
+- ✅ Discovered gaps: missing root __init__.py, wrong directory structure
+- ✅ Decided on extension-only approach (no dummy nodes)
+- ✅ FL_JS is "Connected Client/Server" type custom node
+- ✅ Backend runs independently (FastAPI, not ComfyUI node)
+- ✅ Frontend is pure JavaScript extension
+- ✅ No NODE_CLASS_MAPPINGS needed (empty dict is valid)
+- ✅ Documented in [notes/comfy_research/](../comfy_research/)
 
 ### Implementation Highlights
 
@@ -235,24 +315,49 @@
 - Reconnection support
 - Message type routing
 
+**ComfyUI Integration (Phase 1.5):**
+- Extension-only approach (no processing nodes)
+- Proper directory structure: `web/js/`
+- ES6 module system
+- Main extension entry point
+- Follows ComfyUI conventions
+
 ### Lessons Learned
 
 - Following the implementation plan closely keeps things organized
 - Comprehensive logging helps with debugging
 - Event-driven architecture in frontend provides flexibility
 - Session-based routing is clean and scalable
+- **Research before testing saves time** - discovered structural issues early
+- ComfyUI has specific conventions that must be followed
+- Extension-only approach is valid and cleaner for our use case
 
 ---
 
 ## 🐛 Known Issues
 
-None yet - Phase 1 complete and ready for testing!
+**Phase 1.5 (Pre-Implementation):**
+- Current codebase won't load in ComfyUI (missing __init__.py)
+- Directory structure doesn't match ComfyUI expectations
+- Module system incompatible (CommonJS vs ES6)
+
+**Resolution:** Phase 1.5 implementation will fix all issues
 
 ---
 
-## 🆘 Version History
+## 🆕 Version History
 
-### v0.1.0 - Foundation Phase (Current)
+### v0.1.5 - ComfyUI Integration Phase (In Progress)
+- Research ComfyUI custom node requirements ✅
+- Document findings and create integration plan ✅
+- Restructure codebase for ComfyUI compatibility (in progress)
+- Create root __init__.py
+- Rename frontend/ to web/js/
+- Create extension.js entry point
+- Update to ES6 modules
+- Test in ComfyUI
+
+### v0.1.0 - Foundation Phase (Complete)
 - Complete implementation plans (6 documents)
 - README.md with comprehensive documentation
 - Progress tracking setup
@@ -267,8 +372,7 @@ None yet - Phase 1 complete and ready for testing!
   - WebSocket client with full lifecycle management
   - Automatic reconnection and heartbeat
   - Event-driven message handling
-- **Ready for end-to-end testing in ComfyUI!**
 
 ---
 
-**Phase 1 Complete! Time to test! 🚀**
+**Phase 1.5: Research complete! Ready to restructure! 🔧**
