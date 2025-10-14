@@ -88,13 +88,13 @@ export class ChatUI {
         
         this.container.appendChild(layout);
         
-        // Store references
-        this.messagesContainer = document.getElementById('fl-chat-messages');
-        this.inputField = document.getElementById('fl-chat-input');
-        this.sendButton = document.getElementById('fl-chat-send');
-        this.typingIndicator = document.getElementById('fl-chat-typing');
-        this.statusIndicator = document.getElementById('fl-status-indicator');
-        this.statusText = document.getElementById('fl-status-text');
+        // Store references using querySelector on container
+        this.messagesContainer = this.container.querySelector('#fl-chat-messages');
+        this.inputField = this.container.querySelector('#fl-chat-input');
+        this.sendButton = this.container.querySelector('#fl-chat-send');
+        this.typingIndicator = this.container.querySelector('#fl-chat-typing');
+        this.statusIndicator = this.container.querySelector('#fl-status-indicator');
+        this.statusText = this.container.querySelector('#fl-status-text');
         
         // Add styles
         this._injectStyles();
