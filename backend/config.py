@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     llm_provider: Literal["openai", "anthropic", "gemini"] = "openai"
     llm_model: str = "gpt-4-turbo-preview"
     llm_temperature: float = 0.7
-    llm_max_tokens: int = 4000
+    llm_max_tokens: int = 32000
 
     # API Keys
     openai_api_key: str = ""

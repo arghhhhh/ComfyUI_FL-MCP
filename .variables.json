@@ -1,10 +1,10 @@
 {
-  "current_mode": "implementation",
+  "current_mode": "research",
   "project": "fl_js",
-  "task": "Phase 1.5 COMPLETE!",
+  "task": "Backend auto-start research COMPLETE",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
-  "focus": "ComfyUI integration restructuring complete",
+  "focus": "Documented subprocess approach and implementation plan",
   "plans_created": "6 detailed implementation plans + summary",
   "next_step": "create backend directory structure and config files",
   "ui_integration": "app.extensionManager.registerSidebarTab",
@@ -21,7 +21,8 @@
     "session_manager.js",
     "ws_client.js"
   ],
-  "blocker": "none",
-  "next_action": "test in ComfyUI",
-  "overall_progress": "35%"
+  "blocker": "need to understand ComfyUI initialization hooks",
+  "next_action": "review findings with user",
+  "overall_progress": "35%",
+  "research_complete": "true"
 }
