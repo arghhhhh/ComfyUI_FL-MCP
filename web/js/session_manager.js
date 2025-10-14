@@ -88,7 +88,5 @@ class SessionManager {
     }
 }
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = SessionManager;
-}
+// Export as ES6 module for ComfyUI
+export default SessionManager;

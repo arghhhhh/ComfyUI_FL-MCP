@@ -46,35 +46,30 @@
 
 ### Installation
 
-#### 1. Clone into ComfyUI custom nodes
+#### 1. Clone into ComfyUI custom_nodes directory
 ```bash
 cd /path/to/ComfyUI/custom_nodes
-git clone https://github.com/yourusername/fl_js.git
-cd fl_js
+git clone https://github.com/yourusername/fl_js.git FL_JS
+cd FL_JS
 ```
 
-#### 2. Set up the backend
+> **Important:** The directory must be named `FL_JS` (or your preferred name) inside `custom_nodes/`
+
+#### 2. Install Python dependencies
 ```bash
-cd backend
-python -m venv venv
-
-# Activate virtual environment
-# On Linux/Mac:
-source venv/bin/activate
-# On Windows:
-venv\Scripts\activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your API keys and settings
 ```
+
+> **Note:** Use ComfyUI's Python environment if you have a custom setup.
 
 #### 3. Configure your LLM provider
 
-Edit `backend/.env`:
+Copy the example environment file:
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
 
 ```bash
 # Choose your provider: openai, anthropic, or gemini
@@ -93,25 +88,46 @@ LLM_MODEL=gpt-4-turbo-preview
 ```
 
 #### 4. Start the backend server
+
+The backend must be running for the extension to work:
+
 ```bash
 cd backend
-uvicorn server:app --reload --port 8000
+python server.py
 ```
 
 You should see:
 ```
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     WebSocket endpoint ready at ws://localhost:8000/ws
 ```
 
-#### 5. Start ComfyUI
+> **Keep this terminal open** while using FL_JS!
+
+#### 5. Start (or restart) ComfyUI
+
 ```bash
 cd /path/to/ComfyUI
 python main.py
 ```
 
-#### 6. Open ComfyUI in your browser
+If ComfyUI was already running, **restart it** to load the extension.
 
-Look for the **FL_JS Assistant** button (💬) in the left sidebar!
+#### 6. Verify installation
+
+Open ComfyUI in your browser and check the **browser console** (F12):
+
+```
+[FL_JS] Extension module loaded
+[FL_JS] Initializing Agentic System extension...
+[FL_JS] Session ID: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+[FL_JS] Connecting to backend server...
+[FL_JS] WebSocket connected
+[FL_JS] Handshake complete: connected
+[FL_JS] Extension initialized successfully!
+```
+
+If you see these messages, **you're ready to go!** 🎉
 
 ---
 
@@ -194,22 +210,24 @@ Agent: [Generates Mermaid diagram]
 ### Key Components
 
 #### Frontend (JavaScript)
-- **`extension.js`** - ComfyUI extension entry point, sidebar registration
-- **`chat_ui.js`** - Chat interface with markdown/mermaid rendering
-- **`ws_client.js`** - WebSocket client with auto-reconnection
-- **`tool_executor.js`** - Executes tool callbacks from agent
-- **`fl_api.js`** - Wrapper around legacy FL_JS functions
-- **`query_executor.js`** - JSON-based query DSL execution
-- **`diagram_generator.js`** - Mermaid diagram generation
+- **`web/js/extension.js`** - ComfyUI extension entry point
+- **`web/js/session_manager.js`** - Session management with localStorage
+- **`web/js/ws_client.js`** - WebSocket client with auto-reconnection
+- **`web/js/chat_ui.js`** - Chat interface (Phase 4)
+- **`web/js/tool_executor.js`** - Tool execution (Phase 2)
+- **`web/js/fl_api.js`** - FL_JS API wrapper (Phase 2)
+- **`web/js/query_executor.js`** - Query DSL executor (Phase 3)
+- **`web/js/diagram_generator.js`** - Mermaid diagrams (Phase 4)
 
 #### Backend (Python)
-- **`server.py`** - FastAPI application with WebSocket endpoint
-- **`websocket.py`** - Connection manager, session routing
-- **`agent.py`** - PydanticAI agent factory and management
-- **`mcp_server.py`** - FastMCP tool definitions (40+ tools)
-- **`callback_router.py`** - Tool callback request/response handling
-- **`models.py`** - Pydantic models for messages and queries
-- **`config.py`** - Configuration and settings
+- **`backend/server.py`** - FastAPI application with WebSocket endpoint
+- **`backend/websocket.py`** - Connection manager, session routing
+- **`backend/config.py`** - Configuration and settings
+- **`backend/models.py`** - Pydantic models for messages and queries
+- **`backend/agent.py`** - PydanticAI agent (Phase 3)
+- **`backend/mcp_server.py`** - FastMCP tool definitions (Phase 2)
+- **`backend/callback_router.py`** - Tool callback routing (Phase 2)
+- **`backend/utils.py`** - Utility functions (Phase 3)
 
 ---
 
@@ -217,7 +235,7 @@ Agent: [Generates Mermaid diagram]
 
 ### Environment Variables
 
-All configuration is in `backend/.env`:
+All configuration is in `.env` (copy from `.env.example`):
 
 ```bash
 # === LLM Provider ===
@@ -273,27 +291,29 @@ LOG_FORMAT=json                  # json or text
 ### Project Structure
 
 ```
-fl_js/
+FL_JS/
+├── __init__.py           # ComfyUI custom node registration
 ├── backend/              # Python FastAPI server
 │   ├── __init__.py
 │   ├── server.py         # Main FastAPI app
 │   ├── websocket.py      # WebSocket connection manager
-│   ├── agent.py          # PydanticAI agent setup
-│   ├── mcp_server.py     # FastMCP tool definitions
-│   ├── callback_router.py # Tool callback routing
-│   ├── models.py         # Pydantic models
 │   ├── config.py         # Configuration
-│   └── utils.py          # Utility functions
+│   ├── models.py         # Pydantic models
+│   ├── agent.py          # PydanticAI agent (Phase 3)
+│   ├── mcp_server.py     # FastMCP tools (Phase 2)
+│   ├── callback_router.py # Tool callbacks (Phase 2)
+│   └── utils.py          # Utilities (Phase 3)
 │
-├── frontend/             # JavaScript UI and tools
-│   ├── extension.js      # ComfyUI extension entry
-│   ├── chat_ui.js        # Chat sidebar UI
-│   ├── ws_client.js      # WebSocket client
-│   ├── session_manager.js # Session management
-│   ├── tool_executor.js  # Tool execution
-│   ├── query_executor.js # Query DSL executor
-│   ├── fl_api.js         # FL_JS API wrapper
-│   └── diagram_generator.js # Mermaid diagrams
+├── web/                  # JavaScript extensions
+│   └── js/
+│       ├── extension.js      # ComfyUI extension entry
+│       ├── session_manager.js # Session management
+│       ├── ws_client.js      # WebSocket client
+│       ├── chat_ui.js        # Chat UI (Phase 4)
+│       ├── tool_executor.js  # Tool execution (Phase 2)
+│       ├── query_executor.js # Query DSL (Phase 3)
+│       ├── fl_api.js         # FL_JS wrapper (Phase 2)
+│       └── diagram_generator.js # Mermaid (Phase 4)
 │
 ├── legacy/               # Original FL_JS code
 │   ├── FL_JS.py          # Original node
@@ -306,7 +326,8 @@ fl_js/
 │   └── integration/      # E2E tests
 │
 ├── notes/                # Documentation & plans
-│   └── implementation/   # Detailed implementation plans
+│   ├── implementation/   # Implementation plans
+│   └── comfy_research/   # ComfyUI integration research
 │
 ├── .env.example          # Environment template
 ├── requirements.txt      # Python dependencies
@@ -455,18 +476,72 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 🗺️ Roadmap
 
-See `notes/roadmap.md` for the full roadmap. Highlights:
+See `notes/implementation/progress.md` for current status. Highlights:
 
-- ✅ Multi-session WebSocket support
-- ✅ JSON-based query DSL
-- ✅ 40+ MCP tools
-- ✅ Native ComfyUI sidebar integration
+- ✅ **Phase 1**: Backend & frontend foundation (COMPLETE)
+- ✅ **Phase 1.5**: ComfyUI integration (COMPLETE)
+- 🚧 **Phase 2**: Tool system (40+ MCP tools)
+- 📋 **Phase 3**: Query DSL & agent
+- 📋 **Phase 4**: Chat UI & integration
+- 📋 **Phase 5**: Polish & testing
+
+### Future Features
 - 🚧 Streaming responses
-- 🚧 Workflow templates library
-- 🚧 Execution monitoring & feedback loop
+- 📋 Workflow templates library
+- 📋 Execution monitoring & feedback loop
 - 📋 Plugin system for custom tools
 - 📋 Workflow version control
 - 📋 Collaborative editing
+
+---
+
+## 🐛 Troubleshooting
+
+### Extension doesn't load
+
+**Check browser console (F12):**
+- Should see `[FL_JS] Extension module loaded`
+- If not, check ComfyUI terminal for errors
+- Verify `__init__.py` exists at project root
+- Verify `WEB_DIRECTORY = "./web/js"` in `__init__.py`
+
+### WebSocket connection fails
+
+**Check backend is running:**
+```bash
+cd backend
+python server.py
+```
+
+**Check console for errors:**
+- `[WSClient] Connection error` - Backend not running
+- `[WSClient] Max reconnection attempts reached` - Backend unreachable
+
+**Verify WebSocket URL:**
+- Default: `ws://localhost:8000/ws`
+- Check `web/js/extension.js` line 23
+
+### Session ID mismatch
+
+**Clear localStorage:**
+```javascript
+// In browser console:
+localStorage.removeItem('fl_js_session_id');
+location.reload();
+```
+
+### Backend server errors
+
+**Check `.env` configuration:**
+- Verify API key is set
+- Verify provider matches key
+- Check model name is correct
+
+**Check logs:**
+```bash
+# In backend directory
+tail -f server.log
+```
 
 ---
 

@@ -385,7 +385,5 @@ class WSClient {
     }
 }
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = WSClient;
-}
+// Export as ES6 module for ComfyUI
+export default WSClient;
