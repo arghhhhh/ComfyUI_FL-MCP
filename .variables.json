@@ -1,12 +1,12 @@
 {
   "current_mode": "debugging",
   "project": "fl_js",
-  "task": "message processing investigation",
+  "task": "added comprehensive frontend logging",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
   "focus": "comparing expected vs actual message flow",
   "plans_created": "6 detailed implementation plans + summary",
-  "next_step": "await user approval before implementation",
+  "next_step": "test and review new logs to trace message flow",
   "ui_integration": "app.extensionManager.registerSidebarTab",
   "reference_file": "legacy/NodePackLoader_SideBar.js",
   "progress_file": "notes/implementation/progress.md",
@@ -41,7 +41,7 @@
   ],
   "files_modified": "web/js/ws_client.js, web/js/chat_ui.js, backend/server.py, backend/models.py, backend/manager.py",
   "phase_2_step": "complete",
-  "analysis_complete": "true",
+  "analysis_complete": "false",
   "files_completed": [
     "backend/callback_router.py",
     "web/js/fl_api.js",
@@ -75,5 +75,7 @@
   "phase_2_complete": "true",
   "phase_3_complete": "true",
   "last_note": "notes/message_processing/analysis.md",
-  "fix_status": "user already implemented"
+  "fix_status": "user already implemented",
+  "problem": "frontend executes tool but result never reaches MCP subprocess",
+  "evidence": "backend log shows tool_result arrives AFTER mcp disconnects"
 }

@@ -148,7 +148,10 @@ class WSClient extends EventEmitter {
                     break;
                 
                 case 'tool_request':
+                    console.log('[WSClient] 🔧 Tool request received:', message.tool_name, 'request_id:', message.request_id);
+                    console.log('[WSClient] 🔧 Tool parameters:', message.parameters);
                     this.emit('tool_request', message);
+                    console.log('[WSClient] 🔧 Tool request event emitted');
                     break;
                 
                 case 'typing_indicator':
@@ -247,6 +250,11 @@ class WSClient extends EventEmitter {
             try {
                 this.ws.send(JSON.stringify(message));
                 console.log('[WSClient] Sent message:', message.type);
+                
+                // Extra logging for tool_result messages
+                if (message.type === 'tool_result') {
+                    console.log('[WSClient] 📤 Tool result sent:', message.request_id, 'success:', message.success);
+                }
             } catch (error) {
                 console.error('[WSClient] Error sending message:', error);
                 this.messageQueue.push(message);

@@ -94,7 +94,8 @@ export class ToolExecutor {
         const { request_id, tool_name, parameters } = message;
         const startTime = performance.now();
         
-        console.log(`[ToolExecutor] Executing: ${tool_name} (request_id: ${request_id})`);
+        console.log(`[ToolExecutor] 🚀 START: ${tool_name} (request_id: ${request_id})`);
+        console.log(`[ToolExecutor] Parameters:`, parameters);
         
         try {
             // Find handler
@@ -104,8 +105,11 @@ export class ToolExecutor {
             }
             
             // Execute handler
+            console.log(`[ToolExecutor] Executing handler for ${tool_name}...`);
             const result = await handler(parameters);
             const executionTime = performance.now() - startTime;
+            
+            console.log(`[ToolExecutor] Handler completed for ${tool_name}, execution time: ${executionTime.toFixed(2)}ms`);
             
             // Log execution
             this._logExecution({
@@ -118,6 +122,7 @@ export class ToolExecutor {
             });
             
             // Send success result
+            console.log(`[ToolExecutor] 📤 SENDING RESULT: ${tool_name} (request_id: ${request_id})`);
             await this.wsClient.send({
                 type: "tool_result",
                 request_id: request_id,
@@ -127,12 +132,14 @@ export class ToolExecutor {
             });
             
             console.log(
-                `[ToolExecutor] Success: ${tool_name} ` +
+                `[ToolExecutor] ✅ SUCCESS: ${tool_name} ` +
                 `(${executionTime.toFixed(2)}ms)`
             );
             
         } catch (error) {
             const executionTime = performance.now() - startTime;
+            
+            console.error(`[ToolExecutor] ❌ ERROR in ${tool_name}:`, error);
             
             // Log error
             this._logExecution({
@@ -145,6 +152,7 @@ export class ToolExecutor {
             });
             
             // Send error result
+            console.log(`[ToolExecutor] 📤 SENDING ERROR RESULT: ${tool_name} (request_id: ${request_id})`);
             await this.wsClient.send({
                 type: "tool_result",
                 request_id: request_id,
@@ -154,7 +162,7 @@ export class ToolExecutor {
             });
             
             console.error(
-                `[ToolExecutor] Error: ${tool_name} - ${error.message} ` +
+                `[ToolExecutor] ❌ ERROR: ${tool_name} - ${error.message} ` +
                 `(${executionTime.toFixed(2)}ms)`
             );
         }

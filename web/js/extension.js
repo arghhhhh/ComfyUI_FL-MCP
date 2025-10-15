@@ -70,9 +70,14 @@ app.registerExtension({
             });
             
             wsClient.on('tool_request', async (message) => {
-                console.log("[FL_JS] Tool request received:", message.tool_name);
-                // Execute tool via tool executor
-                await toolExecutor.executeToolRequest(message);
+                console.log("[FL_JS] ⚡ TOOL REQUEST EVENT FIRED:", message.tool_name, 'request_id:', message.request_id);
+                console.log("[FL_JS] ⚡ Calling toolExecutor.executeToolRequest...");
+                try {
+                    await toolExecutor.executeToolRequest(message);
+                    console.log("[FL_JS] ⚡ toolExecutor.executeToolRequest completed");
+                } catch (error) {
+                    console.error("[FL_JS] ❌ Error in tool execution:", error);
+                }
             });
             
             wsClient.on('typing_indicator', (message) => {
