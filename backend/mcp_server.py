@@ -14,7 +14,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import websockets
 from fastmcp import FastMCP, Context
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from backend.models import WorkflowQuery
 
@@ -156,13 +156,11 @@ class MCPWebSocketClient:
         logger.info("[MCP-WS] Disconnected")
 
 
-# Global WebSocket client for this MCP subprocess
-_ws_client: Optional[MCPWebSocketClient] = None
-
-
 @asynccontextmanager
 async def mcp_lifespan(server: FastMCP) -> AsyncIterator[Any]:
     """Manage MCP server lifespan and WebSocket connection."""
+    
+    _ws_client = None
     
     # Check if running in subprocess mode
     if os.getenv('FL_MCP_MODE') == 'subprocess':
@@ -196,7 +194,7 @@ async def mcp_lifespan(server: FastMCP) -> AsyncIterator[Any]:
 mcp = FastMCP("FL_Agent Workflow Tools", lifespan=mcp_lifespan)
 
 
-# Import callback router functions (legacy, kept for backwards compatibility)
+# Legacy callback router support (kept for backwards compatibility)
 _callback_router = None
 
 
@@ -218,6 +216,7 @@ async def _execute_tool(ctx: Context, tool_name: str, parameters: Dict[str, Any]
     """Execute a tool via WebSocket callback.
     
     Args:
+        ctx: FastMCP Context
         tool_name: Name of the tool to execute
         parameters: Tool parameters
         timeout_ms: Optional timeout in milliseconds
@@ -240,99 +239,208 @@ async def _execute_tool(ctx: Context, tool_name: str, parameters: Dict[str, Any]
 
 
 # ============================================================================
+# REQUEST MODELS
+# ============================================================================
+
+# Query & Analysis
+class WorkflowOverviewRequest(BaseModel):
+    """Request for workflow overview."""
+    pass
+
+class WorkflowDiagramRequest(BaseModel):
+    """Request to generate workflow diagram."""
+    node_ids: Optional[List[int]] = Field(None, description="Optional list of node IDs to include (null for all nodes)")
+
+# Node Management
+class FindNodeRequest(BaseModel):
+    """Request to find a node."""
+    node_id: Optional[int] = Field(None, description="Node ID to find")
+    node_type: Optional[str] = Field(None, description="Node type/class to find (e.g., 'KSampler')")
+    title: Optional[str] = Field(None, description="Node title to find")
+    find_last: bool = Field(False, description="If true, search from end of array")
+
+class CreateNodeRequest(BaseModel):
+    """Request to create a new node."""
+    node_type: str = Field(..., description="ComfyUI node class name (e.g., 'CheckpointLoaderSimple')")
+    parameters: Optional[Dict[str, Any]] = Field(None, description="Node parameter values as key-value pairs")
+    position: Optional[Dict[str, float]] = Field(None, description="Node position {x, y}")
+
+class RemoveNodesRequest(BaseModel):
+    """Request to remove nodes from workflow."""
+    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to remove")
+
+class BypassNodesRequest(BaseModel):
+    """Request to bypass nodes."""
+    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to bypass")
+
+class UnbypassNodesRequest(BaseModel):
+    """Request to unbypass nodes."""
+    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to unbypass")
+
+class PinNodesRequest(BaseModel):
+    """Request to pin nodes."""
+    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to pin")
+
+class UnpinNodesRequest(BaseModel):
+    """Request to unpin nodes."""
+    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to unpin")
+
+class SelectNodesRequest(BaseModel):
+    """Request to select nodes."""
+    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to select")
+
+# Node Manipulation
+class GetNodeValuesRequest(BaseModel):
+    """Request to get node parameter values."""
+    node_id: Union[int, str] = Field(..., description="Node ID or title")
+
+class SetNodeValuesRequest(BaseModel):
+    """Request to set node parameter values."""
+    node_id: Union[int, str] = Field(..., description="Node ID or title")
+    values: Dict[str, Any] = Field(..., description="Parameter values to set as key-value pairs")
+
+class ConnectNodesRequest(BaseModel):
+    """Request to connect two nodes."""
+    source_node_id: Union[int, str] = Field(..., description="Source node ID or title")
+    source_slot: Union[str, int] = Field(..., description="Source output slot name or index")
+    target_node_id: Union[int, str] = Field(..., description="Target node ID or title")
+    target_slot: Optional[Union[str, int]] = Field(None, description="Target input slot name or index (defaults to source_slot)")
+
+# Layout Management
+class GetNodeRectRequest(BaseModel):
+    """Request to get node position and size."""
+    node_id: Union[int, str] = Field(..., description="Node ID or title")
+
+class SetNodeRectRequest(BaseModel):
+    """Request to set node position and/or size."""
+    node_id: Union[int, str] = Field(..., description="Node ID or title")
+    x: Optional[float] = Field(None, description="X position (null to keep current)")
+    y: Optional[float] = Field(None, description="Y position (null to keep current)")
+    width: Optional[float] = Field(None, description="Width (null to keep current)")
+    height: Optional[float] = Field(None, description="Height (null to keep current)")
+
+class PositionNodeLeftRequest(BaseModel):
+    """Request to position node to the left of another."""
+    target_node_id: Union[int, str] = Field(..., description="Node to position")
+    anchor_node_id: Union[int, str] = Field(..., description="Reference node")
+    margin: int = Field(32, description="Margin between nodes in pixels")
+
+class PositionNodeRightRequest(BaseModel):
+    """Request to position node to the right of another."""
+    target_node_id: Union[int, str] = Field(..., description="Node to position")
+    anchor_node_id: Union[int, str] = Field(..., description="Reference node")
+    margin: int = Field(32, description="Margin between nodes in pixels")
+
+class PositionNodeTopRequest(BaseModel):
+    """Request to position node above another."""
+    target_node_id: Union[int, str] = Field(..., description="Node to position")
+    anchor_node_id: Union[int, str] = Field(..., description="Reference node")
+    margin: int = Field(64, description="Margin between nodes in pixels")
+
+class PositionNodeBottomRequest(BaseModel):
+    """Request to position node below another."""
+    target_node_id: Union[int, str] = Field(..., description="Node to position")
+    anchor_node_id: Union[int, str] = Field(..., description="Reference node")
+    margin: int = Field(64, description="Margin between nodes in pixels")
+
+class MoveNodeRightRequest(BaseModel):
+    """Request to move node to the right, avoiding collisions."""
+    node_id: Union[int, str] = Field(..., description="Node to move")
+    margin: int = Field(32, description="Margin to maintain when avoiding collisions")
+
+class MoveNodeBottomRequest(BaseModel):
+    """Request to move node downward, avoiding collisions."""
+    node_id: Union[int, str] = Field(..., description="Node to move")
+    margin: int = Field(64, description="Margin to maintain when avoiding collisions")
+
+# Workflow Control
+class QueueWorkflowRequest(BaseModel):
+    """Request to queue workflow for execution."""
+    batch_count: Optional[int] = Field(None, description="Number of times to execute (default: current batch count)")
+
+class CancelWorkflowRequest(BaseModel):
+    """Request to cancel workflow execution."""
+    pass
+
+class EnableAutoQueueRequest(BaseModel):
+    """Request to enable auto-queue mode."""
+    pass
+
+class DisableAutoQueueRequest(BaseModel):
+    """Request to disable auto-queue mode."""
+    pass
+
+class SetBatchCountRequest(BaseModel):
+    """Request to set workflow batch count."""
+    count: int = Field(..., description="Batch count (number of times to execute workflow)")
+
+class GetQueueStatusRequest(BaseModel):
+    """Request to get queue status."""
+    pass
+
+# System Control
+class DisableSleepRequest(BaseModel):
+    """Request to disable system sleep."""
+    pass
+
+class EnableSleepRequest(BaseModel):
+    """Request to enable system sleep."""
+    pass
+
+class DisableScreensaverRequest(BaseModel):
+    """Request to disable screensaver."""
+    pass
+
+class EnableScreensaverRequest(BaseModel):
+    """Request to enable screensaver."""
+    pass
+
+class SendImagesRequest(BaseModel):
+    """Request to send images to external URL."""
+    url: str = Field(..., description="Target URL to send images to")
+    field: str = Field(..., description="Form field name for images")
+    file_paths: List[Union[str, Dict[str, Any]]] = Field(..., description="List of file paths or PreviewImage node objects")
+
+# Utility
+class GenerateSeedRequest(BaseModel):
+    """Request to generate random seed."""
+    pass
+
+class GenerateFloatRequest(BaseModel):
+    """Request to generate random float."""
+    min: float = Field(..., description="Minimum value")
+    max: float = Field(..., description="Maximum value")
+
+class GenerateIntRequest(BaseModel):
+    """Request to generate random integer."""
+    min: int = Field(..., description="Minimum value")
+    max: int = Field(..., description="Maximum value")
+
+class RandomChoiceRequest(BaseModel):
+    """Request to pick random item from list."""
+    items: List[Any] = Field(..., description="List of items to choose from")
+
+
+# ============================================================================
 # QUERY & ANALYSIS TOOLS
 # ============================================================================
 
 @mcp.tool()
-async def query_workflow(query: WorkflowQuery) -> Dict[str, Any]:
-    """Query the workflow graph using structured filters, traversal, and aggregation.
-    
-    Supports filtering nodes by type, parameters, connections, etc.
-    Can traverse graph connections (upstream/downstream).
-    Can aggregate results (count, sum, avg, etc.).
-    Multiple result formats: full, summary, ids, scalar, diagram.
-    
-    Args:
-        query: WorkflowQuery object with filters, traversal, aggregation, etc.
-    
-    Returns:
-        Query results in requested format
-    
-    Example - Find all KSampler nodes:
-        >>> result = await query_workflow(WorkflowQuery(
-        ...     filters=FilterGroup(
-        ...         operator="and",
-        ...         filters=[Filter(field="type", operator="equals", value="KSampler")]
-        ...     )
-        ... ))
-    
-    Example - Count nodes:
-        >>> result = await query_workflow(WorkflowQuery(
-        ...     aggregation=Aggregation(type="count"),
-        ...     result_format="scalar"
-        ... ))
-    
-    Example - Get downstream nodes:
-        >>> result = await query_workflow(WorkflowQuery(
-        ...     filters=FilterGroup(
-        ...         operator="and",
-        ...         filters=[Filter(field="id", operator="equals", value=5)]
-        ...     ),
-        ...     traversal=Traversal(direction="downstream")
-        ... ))
-    """
-    return await _execute_tool("query_workflow", query.model_dump())
+async def query_workflow(query: WorkflowQuery, ctx: Context) -> Dict[str, Any]:
+    """Query the workflow graph using structured filters, traversal, and aggregation."""
+    return await _execute_tool(ctx, "query_workflow", query.model_dump())
 
 
 @mcp.tool()
-async def workflow_overview() -> Dict[str, Any]:
-    """Get a comprehensive overview of the current workflow.
-    
-    Returns workflow statistics, node type counts, disconnected nodes,
-    and a Mermaid diagram of the entire workflow.
-    
-    Returns:
-        Dictionary with:
-        - total_nodes: Total number of nodes
-        - node_types: Count of each node type
-        - disconnected_nodes: List of nodes with no connections
-        - diagram: Mermaid diagram of workflow
-    
-    Example:
-        >>> result = await workflow_overview()
-        >>> print(f"Total nodes: {result['total_nodes']}")
-        >>> print(f"Disconnected: {len(result['disconnected_nodes'])}")
-        >>> print(result['diagram'])
-    """
-    return await _execute_tool("workflow_overview", {})
+async def workflow_overview(request: WorkflowOverviewRequest, ctx: Context) -> Dict[str, Any]:
+    """Get a comprehensive overview of the current workflow."""
+    return await _execute_tool(ctx, "workflow_overview", {})
 
 
 @mcp.tool()
-async def workflow_diagram(
-    node_ids: Optional[List[int]] = Field(None, description="Optional list of node IDs to include (null for all nodes)")
-) -> Dict[str, Any]:
-    """Generate a Mermaid diagram of the workflow or subset of nodes.
-    
-    Creates a visual representation of the workflow graph showing nodes
-    and their connections.
-    
-    Args:
-        node_ids: Optional list of node IDs to include. If None, includes all nodes.
-    
-    Returns:
-        Dictionary with 'diagram' (Mermaid string) key
-    
-    Example:
-        >>> # Diagram of entire workflow
-        >>> result = await workflow_diagram()
-        >>> print(result['diagram'])
-        >>> 
-        >>> # Diagram of specific nodes
-        >>> result = await workflow_diagram(node_ids=[5, 7, 9, 12])
-    """
-    return await _execute_tool("workflow_diagram", {
-        "node_ids": node_ids
-    })
+async def workflow_diagram(request: WorkflowDiagramRequest, ctx: Context) -> Dict[str, Any]:
+    """Generate a Mermaid diagram of the workflow or subset of nodes."""
+    return await _execute_tool(ctx, "workflow_diagram", request.model_dump())
 
 
 # ============================================================================
@@ -340,183 +448,51 @@ async def workflow_diagram(
 # ============================================================================
 
 @mcp.tool()
-async def find_node(
-    node_id: Optional[int] = Field(None, description="Node ID to find"),
-    node_type: Optional[str] = Field(None, description="Node type/class to find (e.g., 'KSampler')"),
-    title: Optional[str] = Field(None, description="Node title to find"),
-    find_last: bool = Field(False, description="If true, search from end of array")
-) -> Dict[str, Any]:
-    """Find a node by ID, type, or title.
-    
-    Returns the first matching node, or the last if find_last=True.
-    At least one of node_id, node_type, or title must be provided.
-    
-    Returns:
-        Dictionary with 'found' (bool) and 'node' (object or null) keys.
-        If found, node contains: id, type, title, position, size, mode.
-    
-    Example:
-        >>> result = await find_node(node_type="KSampler")
-        >>> if result["found"]:
-        ...     print(f"Found node: {result['node']['id']}")
-    """
-    return await _execute_tool("find_node", {
-        "node_id": node_id,
-        "node_type": node_type,
-        "title": title,
-        "find_last": find_last
-    })
+async def find_node(request: FindNodeRequest, ctx: Context) -> Dict[str, Any]:
+    """Find a node by ID, type, or title."""
+    return await _execute_tool(ctx, "find_node", request.model_dump())
 
 
 @mcp.tool()
-async def create_node(
-    node_type: str = Field(..., description="ComfyUI node class name (e.g., 'CheckpointLoaderSimple')"),
-    parameters: Optional[Dict[str, Any]] = Field(None, description="Node parameter values as key-value pairs"),
-    position: Optional[Dict[str, float]] = Field(None, description="Node position {x, y}")
-) -> Dict[str, Any]:
-    """Create a new node in the workflow.
-    
-    Creates a node of the specified type, optionally setting initial parameter
-    values and position.
-    
-    Args:
-        node_type: ComfyUI node class name (e.g., 'KSampler', 'CheckpointLoaderSimple')
-        parameters: Optional dict of parameter values (e.g., {"seed": 42, "steps": 20})
-        position: Optional position dict with x and y coordinates
-    
-    Returns:
-        Dictionary with: id, type, title, position, size
-    
-    Example:
-        >>> result = await create_node(
-        ...     node_type="CheckpointLoaderSimple",
-        ...     parameters={"ckpt_name": "sd_xl_base_1.0.safetensors"},
-        ...     position={"x": 100, "y": 100}
-        ... )
-        >>> node_id = result["id"]
-    """
-    return await _execute_tool("create_node", {
-        "node_type": node_type,
-        "parameters": parameters or {},
-        "position": position
-    })
+async def create_node(request: CreateNodeRequest, ctx: Context) -> Dict[str, Any]:
+    """Create a new node in the workflow."""
+    return await _execute_tool(ctx, "create_node", request.model_dump())
 
 
 @mcp.tool()
-async def remove_nodes(
-    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to remove")
-) -> Dict[str, Any]:
-    """Remove one or more nodes from the workflow.
-    
-    Args:
-        node_ids: List of node IDs (integers) or titles (strings) to remove
-    
-    Returns:
-        Dictionary with 'removed_count' (int) key
-    
-    Example:
-        >>> result = await remove_nodes(node_ids=[5, 7, 9])
-        >>> print(f"Removed {result['removed_count']} nodes")
-    """
-    return await _execute_tool("remove_nodes", {
-        "node_ids": node_ids
-    })
+async def remove_nodes(request: RemoveNodesRequest, ctx: Context) -> Dict[str, Any]:
+    """Remove one or more nodes from the workflow."""
+    return await _execute_tool(ctx, "remove_nodes", request.model_dump())
 
 
 @mcp.tool()
-async def bypass_nodes(
-    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to bypass")
-) -> Dict[str, Any]:
-    """Bypass (mute) one or more nodes.
-    
-    Bypassed nodes are skipped during workflow execution but remain in the graph.
-    
-    Args:
-        node_ids: List of node IDs or titles to bypass
-    
-    Returns:
-        Dictionary with 'bypassed_count' (int) key
-    
-    Example:
-        >>> result = await bypass_nodes(node_ids=[5, 7])
-    """
-    return await _execute_tool("bypass_nodes", {
-        "node_ids": node_ids
-    })
+async def bypass_nodes(request: BypassNodesRequest, ctx: Context) -> Dict[str, Any]:
+    """Bypass (mute) one or more nodes."""
+    return await _execute_tool(ctx, "bypass_nodes", request.model_dump())
 
 
 @mcp.tool()
-async def unbypass_nodes(
-    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to unbypass")
-) -> Dict[str, Any]:
-    """Unbypass (unmute) one or more nodes.
-    
-    Restores bypassed nodes to normal execution mode.
-    
-    Args:
-        node_ids: List of node IDs or titles to unbypass
-    
-    Returns:
-        Dictionary with 'unbypassed_count' (int) key
-    """
-    return await _execute_tool("unbypass_nodes", {
-        "node_ids": node_ids
-    })
+async def unbypass_nodes(request: UnbypassNodesRequest, ctx: Context) -> Dict[str, Any]:
+    """Unbypass (unmute) one or more nodes."""
+    return await _execute_tool(ctx, "unbypass_nodes", request.model_dump())
 
 
 @mcp.tool()
-async def pin_nodes(
-    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to pin")
-) -> Dict[str, Any]:
-    """Pin one or more nodes to prevent movement.
-    
-    Pinned nodes cannot be moved in the UI.
-    
-    Args:
-        node_ids: List of node IDs or titles to pin
-    
-    Returns:
-        Dictionary with 'pinned_count' (int) key
-    """
-    return await _execute_tool("pin_nodes", {
-        "node_ids": node_ids
-    })
+async def pin_nodes(request: PinNodesRequest, ctx: Context) -> Dict[str, Any]:
+    """Pin one or more nodes to prevent movement."""
+    return await _execute_tool(ctx, "pin_nodes", request.model_dump())
 
 
 @mcp.tool()
-async def unpin_nodes(
-    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to unpin")
-) -> Dict[str, Any]:
-    """Unpin one or more nodes to allow movement.
-    
-    Args:
-        node_ids: List of node IDs or titles to unpin
-    
-    Returns:
-        Dictionary with 'unpinned_count' (int) key
-    """
-    return await _execute_tool("unpin_nodes", {
-        "node_ids": node_ids
-    })
+async def unpin_nodes(request: UnpinNodesRequest, ctx: Context) -> Dict[str, Any]:
+    """Unpin one or more nodes to allow movement."""
+    return await _execute_tool(ctx, "unpin_nodes", request.model_dump())
 
 
 @mcp.tool()
-async def select_nodes(
-    node_ids: List[Union[int, str]] = Field(..., description="List of node IDs or titles to select")
-) -> Dict[str, Any]:
-    """Select one or more nodes in the UI.
-    
-    Deselects all other nodes and selects the specified nodes.
-    
-    Args:
-        node_ids: List of node IDs or titles to select
-    
-    Returns:
-        Dictionary with 'selected_count' (int) key
-    """
-    return await _execute_tool("select_nodes", {
-        "node_ids": node_ids
-    })
+async def select_nodes(request: SelectNodesRequest, ctx: Context) -> Dict[str, Any]:
+    """Select one or more nodes in the UI."""
+    return await _execute_tool(ctx, "select_nodes", request.model_dump())
 
 
 # ============================================================================
@@ -524,101 +500,21 @@ async def select_nodes(
 # ============================================================================
 
 @mcp.tool()
-async def get_node_values(
-    node_id: Union[int, str] = Field(..., description="Node ID or title")
-) -> Dict[str, Any]:
-    """Get all parameter values from a node.
-    
-    Returns all widget values (parameters) from the specified node.
-    
-    Args:
-        node_id: Node ID (int) or title (str)
-    
-    Returns:
-        Dictionary with 'node_id' and 'values' (dict of parameter values)
-    
-    Example:
-        >>> result = await get_node_values(node_id=5)
-        >>> values = result["values"]
-        >>> print(f"Seed: {values['seed']}, Steps: {values['steps']}")
-    """
-    return await _execute_tool("get_node_values", {
-        "node_id": node_id
-    })
+async def get_node_values(request: GetNodeValuesRequest, ctx: Context) -> Dict[str, Any]:
+    """Get all parameter values from a node."""
+    return await _execute_tool(ctx, "get_node_values", request.model_dump())
 
 
 @mcp.tool()
-async def set_node_values(
-    node_id: Union[int, str] = Field(..., description="Node ID or title"),
-    values: Dict[str, Any] = Field(..., description="Parameter values to set as key-value pairs")
-) -> Dict[str, Any]:
-    """Set parameter values on a node.
-    
-    Updates widget values (parameters) on the specified node.
-    
-    Args:
-        node_id: Node ID (int) or title (str)
-        values: Dictionary of parameter values to set (e.g., {"seed": 42, "steps": 20})
-    
-    Returns:
-        Dictionary with 'node_id' and 'values' (updated parameter values)
-    
-    Example:
-        >>> result = await set_node_values(
-        ...     node_id=5,
-        ...     values={"seed": 42, "steps": 30, "cfg": 7.5}
-        ... )
-    """
-    return await _execute_tool("set_node_values", {
-        "node_id": node_id,
-        "values": values
-    })
+async def set_node_values(request: SetNodeValuesRequest, ctx: Context) -> Dict[str, Any]:
+    """Set parameter values on a node."""
+    return await _execute_tool(ctx, "set_node_values", request.model_dump())
 
 
 @mcp.tool()
-async def connect_nodes(
-    source_node_id: Union[int, str] = Field(..., description="Source node ID or title"),
-    source_slot: Union[str, int] = Field(..., description="Source output slot name or index"),
-    target_node_id: Union[int, str] = Field(..., description="Target node ID or title"),
-    target_slot: Optional[Union[str, int]] = Field(None, description="Target input slot name or index (defaults to source_slot)")
-) -> Dict[str, Any]:
-    """Connect two nodes together.
-    
-    Creates a connection from a source node's output to a target node's input.
-    Slots can be specified by name (string) or index (integer).
-    
-    Args:
-        source_node_id: Source node ID or title
-        source_slot: Source output slot name (e.g., "IMAGE", "LATENT") or index (0, 1, 2...)
-        target_node_id: Target node ID or title
-        target_slot: Target input slot name or index (if None, uses source_slot name)
-    
-    Returns:
-        Dictionary with 'connected' (bool) key
-    
-    Example:
-        >>> # Connect by slot name
-        >>> result = await connect_nodes(
-        ...     source_node_id=5,
-        ...     source_slot="IMAGE",
-        ...     target_node_id=7,
-        ...     target_slot="image"
-        ... )
-        >>> 
-        >>> # Connect by index
-        >>> result = await connect_nodes(
-        ...     source_node_id=5,
-        ...     source_slot=0,
-        ...     target_node_id=7,
-        ...     target_slot=0
-        ... )
-    """
-    return await _execute_tool("connect_nodes", {
-        "source_node_id": source_node_id,
-        "source_slot": source_slot,
-        "target_node_id": target_node_id,
-        "target_slot": target_slot
-    })
+async def connect_nodes(request: ConnectNodesRequest, ctx: Context) -> Dict[str, Any]:
+    """Connect two nodes together."""
+    return await _execute_tool(ctx, "connect_nodes", request.model_dump())
 
 
 # ============================================================================
@@ -626,213 +522,51 @@ async def connect_nodes(
 # ============================================================================
 
 @mcp.tool()
-async def get_node_rect(
-    node_id: Union[int, str] = Field(..., description="Node ID or title")
-) -> Dict[str, Any]:
-    """Get node position and size.
-    
-    Args:
-        node_id: Node ID or title
-    
-    Returns:
-        Dictionary with 'node_id' and 'rect' {x, y, width, height}
-    
-    Example:
-        >>> result = await get_node_rect(node_id=5)
-        >>> rect = result["rect"]
-        >>> print(f"Position: ({rect['x']}, {rect['y']}), Size: {rect['width']}x{rect['height']}")
-    """
-    return await _execute_tool("get_node_rect", {
-        "node_id": node_id
-    })
+async def get_node_rect(request: GetNodeRectRequest, ctx: Context) -> Dict[str, Any]:
+    """Get node position and size."""
+    return await _execute_tool(ctx, "get_node_rect", request.model_dump())
 
 
 @mcp.tool()
-async def set_node_rect(
-    node_id: Union[int, str] = Field(..., description="Node ID or title"),
-    x: Optional[float] = Field(None, description="X position (null to keep current)"),
-    y: Optional[float] = Field(None, description="Y position (null to keep current)"),
-    width: Optional[float] = Field(None, description="Width (null to keep current)"),
-    height: Optional[float] = Field(None, description="Height (null to keep current)")
-) -> Dict[str, Any]:
-    """Set node position and/or size.
-    
-    Updates the node's position and/or size. Pass null for any dimension to keep current value.
-    
-    Args:
-        node_id: Node ID or title
-        x: X position (or None to keep current)
-        y: Y position (or None to keep current)
-        width: Width (or None to keep current)
-        height: Height (or None to keep current)
-    
-    Returns:
-        Dictionary with 'node_id' and 'rect' (updated rectangle)
-    
-    Example:
-        >>> # Move to new position
-        >>> result = await set_node_rect(node_id=5, x=200, y=300)
-        >>> 
-        >>> # Resize
-        >>> result = await set_node_rect(node_id=5, width=400, height=200)
-    """
-    return await _execute_tool("set_node_rect", {
-        "node_id": node_id,
-        "x": x,
-        "y": y,
-        "width": width,
-        "height": height
-    })
+async def set_node_rect(request: SetNodeRectRequest, ctx: Context) -> Dict[str, Any]:
+    """Set node position and/or size."""
+    return await _execute_tool(ctx, "set_node_rect", request.model_dump())
 
 
 @mcp.tool()
-async def position_node_left(
-    target_node_id: Union[int, str] = Field(..., description="Node to position"),
-    anchor_node_id: Union[int, str] = Field(..., description="Reference node"),
-    margin: int = Field(32, description="Margin between nodes in pixels")
-) -> Dict[str, Any]:
-    """Position a node to the left of another node.
-    
-    Places the target node to the left of the anchor node with the specified margin.
-    
-    Args:
-        target_node_id: Node to move
-        anchor_node_id: Reference node
-        margin: Space between nodes (default: 32)
-    
-    Returns:
-        Dictionary with 'positioned' (bool) key
-    
-    Example:
-        >>> await position_node_left(target_node_id=7, anchor_node_id=5, margin=50)
-    """
-    return await _execute_tool("position_node_left", {
-        "target_node_id": target_node_id,
-        "anchor_node_id": anchor_node_id,
-        "margin": margin
-    })
+async def position_node_left(request: PositionNodeLeftRequest, ctx: Context) -> Dict[str, Any]:
+    """Position a node to the left of another node."""
+    return await _execute_tool(ctx, "position_node_left", request.model_dump())
 
 
 @mcp.tool()
-async def position_node_right(
-    target_node_id: Union[int, str] = Field(..., description="Node to position"),
-    anchor_node_id: Union[int, str] = Field(..., description="Reference node"),
-    margin: int = Field(32, description="Margin between nodes in pixels")
-) -> Dict[str, Any]:
-    """Position a node to the right of another node.
-    
-    Places the target node to the right of the anchor node with the specified margin.
-    
-    Args:
-        target_node_id: Node to move
-        anchor_node_id: Reference node
-        margin: Space between nodes (default: 32)
-    
-    Returns:
-        Dictionary with 'positioned' (bool) key
-    """
-    return await _execute_tool("position_node_right", {
-        "target_node_id": target_node_id,
-        "anchor_node_id": anchor_node_id,
-        "margin": margin
-    })
+async def position_node_right(request: PositionNodeRightRequest, ctx: Context) -> Dict[str, Any]:
+    """Position a node to the right of another node."""
+    return await _execute_tool(ctx, "position_node_right", request.model_dump())
 
 
 @mcp.tool()
-async def position_node_top(
-    target_node_id: Union[int, str] = Field(..., description="Node to position"),
-    anchor_node_id: Union[int, str] = Field(..., description="Reference node"),
-    margin: int = Field(64, description="Margin between nodes in pixels")
-) -> Dict[str, Any]:
-    """Position a node above another node.
-    
-    Places the target node above the anchor node with the specified margin.
-    
-    Args:
-        target_node_id: Node to move
-        anchor_node_id: Reference node
-        margin: Space between nodes (default: 64)
-    
-    Returns:
-        Dictionary with 'positioned' (bool) key
-    """
-    return await _execute_tool("position_node_top", {
-        "target_node_id": target_node_id,
-        "anchor_node_id": anchor_node_id,
-        "margin": margin
-    })
+async def position_node_top(request: PositionNodeTopRequest, ctx: Context) -> Dict[str, Any]:
+    """Position a node above another node."""
+    return await _execute_tool(ctx, "position_node_top", request.model_dump())
 
 
 @mcp.tool()
-async def position_node_bottom(
-    target_node_id: Union[int, str] = Field(..., description="Node to position"),
-    anchor_node_id: Union[int, str] = Field(..., description="Reference node"),
-    margin: int = Field(64, description="Margin between nodes in pixels")
-) -> Dict[str, Any]:
-    """Position a node below another node.
-    
-    Places the target node below the anchor node with the specified margin.
-    
-    Args:
-        target_node_id: Node to move
-        anchor_node_id: Reference node
-        margin: Space between nodes (default: 64)
-    
-    Returns:
-        Dictionary with 'positioned' (bool) key
-    """
-    return await _execute_tool("position_node_bottom", {
-        "target_node_id": target_node_id,
-        "anchor_node_id": anchor_node_id,
-        "margin": margin
-    })
+async def position_node_bottom(request: PositionNodeBottomRequest, ctx: Context) -> Dict[str, Any]:
+    """Position a node below another node."""
+    return await _execute_tool(ctx, "position_node_bottom", request.model_dump())
 
 
 @mcp.tool()
-async def move_node_right(
-    node_id: Union[int, str] = Field(..., description="Node to move"),
-    margin: int = Field(32, description="Margin to maintain when avoiding collisions")
-) -> Dict[str, Any]:
-    """Move a node to the right, avoiding collisions.
-    
-    Moves the node to the right until it no longer collides with other nodes.
-    
-    Args:
-        node_id: Node to move
-        margin: Minimum space to maintain between nodes (default: 32)
-    
-    Returns:
-        Dictionary with 'moved' (bool) key
-    
-    Example:
-        >>> await move_node_right(node_id=5, margin=50)
-    """
-    return await _execute_tool("move_node_right", {
-        "node_id": node_id,
-        "margin": margin
-    })
+async def move_node_right(request: MoveNodeRightRequest, ctx: Context) -> Dict[str, Any]:
+    """Move a node to the right, avoiding collisions."""
+    return await _execute_tool(ctx, "move_node_right", request.model_dump())
 
 
 @mcp.tool()
-async def move_node_bottom(
-    node_id: Union[int, str] = Field(..., description="Node to move"),
-    margin: int = Field(64, description="Margin to maintain when avoiding collisions")
-) -> Dict[str, Any]:
-    """Move a node downward, avoiding collisions.
-    
-    Moves the node down until it no longer collides with other nodes.
-    
-    Args:
-        node_id: Node to move
-        margin: Minimum space to maintain between nodes (default: 64)
-    
-    Returns:
-        Dictionary with 'moved' (bool) key
-    """
-    return await _execute_tool("move_node_bottom", {
-        "node_id": node_id,
-        "margin": margin
-    })
+async def move_node_bottom(request: MoveNodeBottomRequest, ctx: Context) -> Dict[str, Any]:
+    """Move a node downward, avoiding collisions."""
+    return await _execute_tool(ctx, "move_node_bottom", request.model_dump())
 
 
 # ============================================================================
@@ -840,106 +574,39 @@ async def move_node_bottom(
 # ============================================================================
 
 @mcp.tool()
-async def queue_workflow(
-    batch_count: Optional[int] = Field(None, description="Number of times to execute (default: current batch count)")
-) -> Dict[str, Any]:
-    """Queue the workflow for execution.
-    
-    Queues the current workflow to run on the ComfyUI backend.
-    
-    Args:
-        batch_count: Number of times to execute (or None to use current setting)
-    
-    Returns:
-        Dictionary with 'queued' (bool) and 'batchCount' (int) keys
-    
-    Example:
-        >>> result = await queue_workflow(batch_count=5)
-        >>> print(f"Queued workflow with batch count: {result['batchCount']}")
-    """
-    return await _execute_tool("queue_workflow", {
-        "batch_count": batch_count
-    })
+async def queue_workflow(request: QueueWorkflowRequest, ctx: Context) -> Dict[str, Any]:
+    """Queue the workflow for execution."""
+    return await _execute_tool(ctx, "queue_workflow", request.model_dump())
 
 
 @mcp.tool()
-async def cancel_workflow() -> Dict[str, Any]:
-    """Cancel the currently executing workflow.
-    
-    Interrupts the current workflow execution.
-    
-    Returns:
-        Dictionary with 'cancelled' (bool) key
-    
-    Example:
-        >>> result = await cancel_workflow()
-    """
-    return await _execute_tool("cancel_workflow", {})
+async def cancel_workflow(request: CancelWorkflowRequest, ctx: Context) -> Dict[str, Any]:
+    """Cancel the currently executing workflow."""
+    return await _execute_tool(ctx, "cancel_workflow", {})
 
 
 @mcp.tool()
-async def enable_auto_queue() -> Dict[str, Any]:
-    """Enable auto-queue mode.
-    
-    When enabled, the workflow will automatically execute when changes are made.
-    
-    Returns:
-        Dictionary with 'autoQueue' (bool) and 'mode' (str) keys
-    
-    Example:
-        >>> result = await enable_auto_queue()
-    """
-    return await _execute_tool("enable_auto_queue", {})
+async def enable_auto_queue(request: EnableAutoQueueRequest, ctx: Context) -> Dict[str, Any]:
+    """Enable auto-queue mode."""
+    return await _execute_tool(ctx, "enable_auto_queue", {})
 
 
 @mcp.tool()
-async def disable_auto_queue() -> Dict[str, Any]:
-    """Disable auto-queue mode.
-    
-    Prevents automatic workflow execution on changes.
-    
-    Returns:
-        Dictionary with 'autoQueue' (bool) and 'mode' (str) keys
-    """
-    return await _execute_tool("disable_auto_queue", {})
+async def disable_auto_queue(request: DisableAutoQueueRequest, ctx: Context) -> Dict[str, Any]:
+    """Disable auto-queue mode."""
+    return await _execute_tool(ctx, "disable_auto_queue", {})
 
 
 @mcp.tool()
-async def set_batch_count(
-    count: int = Field(..., description="Batch count (number of times to execute workflow)")
-) -> Dict[str, Any]:
-    """Set the workflow batch count.
-    
-    Sets how many times the workflow will execute when queued.
-    
-    Args:
-        count: Batch count (must be >= 1)
-    
-    Returns:
-        Dictionary with 'batchCount' (int) key
-    
-    Example:
-        >>> result = await set_batch_count(count=10)
-    """
-    return await _execute_tool("set_batch_count", {
-        "count": count
-    })
+async def set_batch_count(request: SetBatchCountRequest, ctx: Context) -> Dict[str, Any]:
+    """Set the workflow batch count."""
+    return await _execute_tool(ctx, "set_batch_count", request.model_dump())
 
 
 @mcp.tool()
-async def get_queue_status() -> Dict[str, Any]:
-    """Get current queue status and settings.
-    
-    Returns information about the queue mode and batch count.
-    
-    Returns:
-        Dictionary with 'mode' (str), 'autoQueue' (bool), and 'batchCount' (int) keys
-    
-    Example:
-        >>> result = await get_queue_status()
-        >>> print(f"Auto-queue: {result['autoQueue']}, Batch: {result['batchCount']}")
-    """
-    return await _execute_tool("get_queue_status", {})
+async def get_queue_status(request: GetQueueStatusRequest, ctx: Context) -> Dict[str, Any]:
+    """Get current queue status and settings."""
+    return await _execute_tool(ctx, "get_queue_status", {})
 
 
 # ============================================================================
@@ -947,88 +614,33 @@ async def get_queue_status() -> Dict[str, Any]:
 # ============================================================================
 
 @mcp.tool()
-async def disable_sleep() -> Dict[str, Any]:
-    """Disable system sleep/suspend.
-    
-    Prevents the system from going to sleep during long workflow executions.
-    Requires the event-handler custom node to be installed.
-    
-    Returns:
-        Dictionary with 'sleepDisabled' (bool) key
-    """
-    return await _execute_tool("disable_sleep", {})
+async def disable_sleep(request: DisableSleepRequest, ctx: Context) -> Dict[str, Any]:
+    """Disable system sleep/suspend."""
+    return await _execute_tool(ctx, "disable_sleep", {})
 
 
 @mcp.tool()
-async def enable_sleep() -> Dict[str, Any]:
-    """Enable system sleep/suspend.
-    
-    Allows the system to sleep normally.
-    Requires the event-handler custom node to be installed.
-    
-    Returns:
-        Dictionary with 'sleepEnabled' (bool) key
-    """
-    return await _execute_tool("enable_sleep", {})
+async def enable_sleep(request: EnableSleepRequest, ctx: Context) -> Dict[str, Any]:
+    """Enable system sleep/suspend."""
+    return await _execute_tool(ctx, "enable_sleep", {})
 
 
 @mcp.tool()
-async def disable_screensaver() -> Dict[str, Any]:
-    """Disable screensaver.
-    
-    Prevents the screensaver from activating during workflow execution.
-    Requires the event-handler custom node to be installed.
-    
-    Returns:
-        Dictionary with 'screensaverDisabled' (bool) key
-    """
-    return await _execute_tool("disable_screensaver", {})
+async def disable_screensaver(request: DisableScreensaverRequest, ctx: Context) -> Dict[str, Any]:
+    """Disable screensaver."""
+    return await _execute_tool(ctx, "disable_screensaver", {})
 
 
 @mcp.tool()
-async def enable_screensaver() -> Dict[str, Any]:
-    """Enable screensaver.
-    
-    Allows the screensaver to activate normally.
-    Requires the event-handler custom node to be installed.
-    
-    Returns:
-        Dictionary with 'screensaverEnabled' (bool) key
-    """
-    return await _execute_tool("enable_screensaver", {})
+async def enable_screensaver(request: EnableScreensaverRequest, ctx: Context) -> Dict[str, Any]:
+    """Enable screensaver."""
+    return await _execute_tool(ctx, "enable_screensaver", {})
 
 
 @mcp.tool()
-async def send_images(
-    url: str = Field(..., description="Target URL to send images to"),
-    field: str = Field(..., description="Form field name for images"),
-    file_paths: List[Union[str, Dict[str, Any]]] = Field(..., description="List of file paths or PreviewImage node objects")
-) -> Dict[str, Any]:
-    """Send images to an external URL.
-    
-    Sends generated images to an external service via HTTP POST.
-    Requires the event-handler custom node to be installed.
-    
-    Args:
-        url: Target URL
-        field: Form field name for the images
-        file_paths: List of file paths (strings) or PreviewImage node objects
-    
-    Returns:
-        Dictionary with 'sent' (bool) and 'count' (int) keys
-    
-    Example:
-        >>> result = await send_images(
-        ...     url="http://example.com/upload",
-        ...     field="images",
-        ...     file_paths=["/path/to/image1.png", "/path/to/image2.png"]
-        ... )
-    """
-    return await _execute_tool("send_images", {
-        "url": url,
-        "field": field,
-        "file_paths": file_paths
-    })
+async def send_images(request: SendImagesRequest, ctx: Context) -> Dict[str, Any]:
+    """Send images to an external URL."""
+    return await _execute_tool(ctx, "send_images", request.model_dump())
 
 
 # ============================================================================
@@ -1036,96 +648,27 @@ async def send_images(
 # ============================================================================
 
 @mcp.tool()
-async def generate_seed() -> Dict[str, Any]:
-    """Generate a random seed value.
-    
-    Generates a random seed suitable for use with ComfyUI nodes.
-    
-    Returns:
-        Dictionary with 'seed' (int) key
-    
-    Example:
-        >>> result = await generate_seed()
-        >>> seed = result["seed"]
-        >>> await set_node_values(node_id=5, values={"seed": seed})
-    """
-    return await _execute_tool("generate_seed", {})
+async def generate_seed(request: GenerateSeedRequest, ctx: Context) -> Dict[str, Any]:
+    """Generate a random seed value."""
+    return await _execute_tool(ctx, "generate_seed", {})
 
 
 @mcp.tool()
-async def generate_float(
-    min: float = Field(..., description="Minimum value"),
-    max: float = Field(..., description="Maximum value")
-) -> Dict[str, Any]:
-    """Generate a random float value.
-    
-    Generates a random floating-point number in the specified range.
-    
-    Args:
-        min: Minimum value (inclusive)
-        max: Maximum value (exclusive)
-    
-    Returns:
-        Dictionary with 'value' (float) key
-    
-    Example:
-        >>> result = await generate_float(min=0.5, max=1.5)
-        >>> value = result["value"]
-    """
-    return await _execute_tool("generate_float", {
-        "min": min,
-        "max": max
-    })
+async def generate_float(request: GenerateFloatRequest, ctx: Context) -> Dict[str, Any]:
+    """Generate a random float value."""
+    return await _execute_tool(ctx, "generate_float", request.model_dump())
 
 
 @mcp.tool()
-async def generate_int(
-    min: int = Field(..., description="Minimum value"),
-    max: int = Field(..., description="Maximum value")
-) -> Dict[str, Any]:
-    """Generate a random integer value.
-    
-    Generates a random integer in the specified range.
-    
-    Args:
-        min: Minimum value (inclusive)
-        max: Maximum value (exclusive)
-    
-    Returns:
-        Dictionary with 'value' (int) key
-    
-    Example:
-        >>> result = await generate_int(min=10, max=50)
-        >>> value = result["value"]
-    """
-    return await _execute_tool("generate_int", {
-        "min": min,
-        "max": max
-    })
+async def generate_int(request: GenerateIntRequest, ctx: Context) -> Dict[str, Any]:
+    """Generate a random integer value."""
+    return await _execute_tool(ctx, "generate_int", request.model_dump())
 
 
 @mcp.tool()
-async def random_choice(
-    items: List[Any] = Field(..., description="List of items to choose from")
-) -> Dict[str, Any]:
-    """Pick a random item from a list.
-    
-    Selects one random item from the provided list.
-    
-    Args:
-        items: List of items (must be non-empty)
-    
-    Returns:
-        Dictionary with 'choice' (any type) key
-    
-    Example:
-        >>> result = await random_choice(items=["euler", "euler_a", "dpmpp_2m"])
-        >>> sampler = result["choice"]
-        >>> await set_node_values(node_id=5, values={"sampler_name": sampler})
-    """
-    return await _execute_tool("random_choice", {
-        "items": items
-    })
+async def random_choice(request: RandomChoiceRequest, ctx: Context) -> Dict[str, Any]:
+    """Pick a random item from a list."""
+    return await _execute_tool(ctx, "random_choice", request.model_dump())
 
 
 def main():
