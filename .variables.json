@@ -1,10 +1,10 @@
 {
-  "current_mode": "implementation",
+  "current_mode": "debugging",
   "project": "fl_js",
-  "task": "MCP refactoring ACTUALLY complete",
+  "task": "message processing investigation",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
-  "focus": "changes were applied successfully, just verifying",
+  "focus": "comparing expected vs actual message flow",
   "plans_created": "6 detailed implementation plans + summary",
   "next_step": "await user approval before implementation",
   "ui_integration": "app.extensionManager.registerSidebarTab",
@@ -58,7 +58,7 @@
     "notes/ws/implementation.md"
   ],
   "root_cause_hypothesis": "ChatUI._initializeUI() sets innerHTML but browser hasn't parsed/rendered it yet when _attachEventHandlers() tries to getElementById",
-  "root_cause": "client sending message without 'content' field - need to check client-side message structure",
+  "root_cause": "async with agent.run_mcp_servers() context needed",
   "confidence": "99% on circular dependency, 95% on ChatUI race, 100% on heartbeat removal",
   "root_cause_1": "send() requires handshakeComplete for ALL messages including handshake itself",
   "root_cause_2": "messagesContainer is null when _addWelcomeMessage runs - DOM timing issue",
@@ -73,5 +73,7 @@
   "investigation_complete": "true",
   "phase_1_complete": "true",
   "phase_2_complete": "true",
-  "phase_3_complete": "true"
+  "phase_3_complete": "true",
+  "last_note": "notes/message_processing/analysis.md",
+  "fix_status": "user already implemented"
 }

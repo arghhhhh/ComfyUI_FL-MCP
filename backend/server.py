@@ -281,19 +281,22 @@ async def handle_user_message(session_id: str, data: dict[str, Any]) -> None:
         # Get or create agent for this session
         agent = agent_manager.get_agent(session_id)
         
-        # Process message with agent
-        response = await agent.run(message.message) # TODO set this to use message history for this session
+        response = None
+        async with agent.run_mcp_servers(): 
+            # Process message with agent
+            response = await agent.run(message.message) # TODO set this to use message history for this session
         
-        # Send response
-        await manager.send_message(session_id, {
-            "type": "agent_response",
-            "session_id": session_id,
-            "message": response.output,
-            "tool_calls": [], # TODO set this to use the proper message parts
-            "is_final": True,
-        })
-        
-        logger.info(f"Agent response sent to {session_id}")
+        if response is not None:
+            # Send response
+            await manager.send_message(session_id, {
+                "type": "agent_response",
+                "session_id": session_id,
+                "message": response.output,
+                "tool_calls": [], # TODO set this to use the proper message parts
+                "is_final": True,
+            })
+            
+            logger.info(f"Agent response sent to {session_id}")
     
     except Exception as e:
         logger.error(f"Error handling user message: {e}", exc_info=True)
