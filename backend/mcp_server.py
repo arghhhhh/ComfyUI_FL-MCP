@@ -17,6 +17,12 @@ from fastmcp import FastMCP, Context
 from pydantic import BaseModel, Field
 
 from models import WorkflowQuery
+from .comfy_models import (
+    ComfyListFoldersRequest, ComfyListFoldersResponse,
+    ComfyReadFileRequest, ComfyReadFileResponse,
+    ComfySearchFilesRequest, ComfySearchFilesResponse
+)
+from .comfy_tools import get_comfy_tools, ComfyUIError, ComfyUINotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -690,12 +696,164 @@ async def random_choice(request: RandomChoiceRequest, ctx: Context) -> Dict[str,
     """Pick a random item from a list."""
     return await _execute_tool(ctx, "random_choice", request.model_dump())
 
+# ============================================================================
+# COMFYUI EXTENDED TOOLS
+# ============================================================================
 
+@mcp.tool()
+async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> ComfyListFoldersResponse:
+    """List contents of ComfyUI directories with type-aware organization.
+    
+    This tool provides agents with deterministic access to ComfyUI directory structure.
+    
+    USE CASES:
+    - Custom Node Discovery: folder_type="custom_nodes" → List all installed node packs
+    - Model Management: folder_type="checkpoints" → List available diffusion models
+    - LoRA Discovery: folder_type="loras" → List LoRA adaptation files
+    - Output Review: folder_type="output" → List recently generated images
+    - Input Files: folder_type="input" → List available input files
+    
+    AGENT WORKFLOW:
+    1. Start with "custom_nodes" to discover what's installed
+    2. Check "checkpoints" and "loras" for available models
+    3. Use "output" to see recent generation results
+    4. Check "input" for workflow source files
+    
+    SECURITY: All paths are validated and sandboxed to ComfyUI installation.
+    """
+    try:
+        tools = get_comfy_tools()
+        items = tools.list_folders(request.folder_type)
+        
+        return ComfyListFoldersResponse(
+            folder_type=request.folder_type.value,
+            folder_path=tools.folder_mappings[request.folder_type],
+            items=items,
+            total_items=len(items),
+            comfyui_root=str(tools.comfyui_root)
+        )
+        
+    except ComfyUINotFoundError as e:
+        raise RuntimeError(f"ComfyUI installation not found: {e}")
+    except ComfyUIError as e:
+        raise RuntimeError(f"ComfyUI operation failed: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in comfy_list_folders: {e}")
+        raise RuntimeError(f"Tool execution failed: {e}")
+
+
+@mcp.tool()
+async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> ComfyReadFileResponse:
+    """Read text files within ComfyUI directory for analysis and understanding.
+    
+    This tool enables agents to examine ComfyUI files to understand capabilities.
+    
+    USE CASES:
+    - Node Discovery: Read "custom_nodes/{pack}/__init__.py" → Extract NODE_CLASS_MAPPINGS
+    - Implementation Analysis: Read node .py files → Understand functionality
+    - Documentation: Read "custom_nodes/{pack}/README.md" → Get usage info
+    - Dependencies: Read "requirements.txt" → Check compatibility
+    - Configuration: Read config files → Understand settings
+    
+    COMMON FILE PATTERNS:
+    - "custom_nodes/{pack}/__init__.py" → Node registration and mappings
+    - "custom_nodes/{pack}/nodes.py" → Node implementations
+    - "custom_nodes/{pack}/README.md" → Documentation and examples
+    - "custom_nodes/{pack}/requirements.txt" → Python dependencies
+    
+    AGENT WORKFLOW:
+    1. List custom_nodes → Read __init__.py → Extract NODE_CLASS_MAPPINGS
+    2. Find node implementations → Read code → Understand interfaces
+    3. Read README files → Get usage examples and documentation
+    
+    SECURITY: Files are sandboxed to ComfyUI directory, size limits enforced.
+    """
+    try:
+        tools = get_comfy_tools()
+        content = tools.read_file(request.path, request.max_size)
+        
+        # Get file info
+        full_path = tools._validate_path(request.path)
+        stat = full_path.stat()
+        
+        return ComfyReadFileResponse(
+            path=request.path,
+            content=content,
+            size=stat.st_size,
+            encoding="utf-8",
+            extension=full_path.suffix,
+            comfyui_root=str(tools.comfyui_root)
+        )
+        
+    except ComfyUINotFoundError as e:
+        raise RuntimeError(f"ComfyUI installation not found: {e}")
+    except ComfyUIError as e:
+        raise RuntimeError(f"ComfyUI file operation failed: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in comfy_read_file: {e}")
+        raise RuntimeError(f"Tool execution failed: {e}")
+
+
+@mcp.tool()
+async def comfy_search_files(request: ComfySearchFilesRequest, ctx: Context) -> ComfySearchFilesResponse:
+    """Search for patterns in ComfyUI files to discover functionality.
+    
+    This tool enables agents to efficiently discover specific functionality.
+    
+    USE CASES:
+    - Node Discovery: pattern="NODE_CLASS_MAPPINGS" → Find all node registrations
+    - Class Search: pattern="class.*Upscale" → Find upscaling node implementations
+    - Function Search: pattern="def.*encode" → Find encoding functions
+    - Capability Search: pattern="upscale|enhance|resize" → Find image enhancement
+    - Documentation: pattern="example|tutorial" → Find usage examples
+    - Dependencies: pattern="requirements" → Find dependency files
+    
+    SEARCH EXAMPLES:
+    - pattern="NODE_CLASS_MAPPINGS", folder_type="custom_nodes" → All node definitions
+    - pattern="class.*Node", file_pattern="*.py" → All node class implementations
+    - pattern="INPUT_TYPES", file_pattern="*.py" → Node input specifications
+    - pattern="requirements", file_pattern="*.txt" → Dependency files
+    
+    AGENT WORKFLOW:
+    1. Search for functionality keywords → Find implementations
+    2. Search for "NODE_CLASS_MAPPINGS" → Discover all available nodes
+    3. Search for specific patterns → Understand codebase structure
+    
+    PERFORMANCE: Results limited by max_results, provides context for understanding.
+    """
+    try:
+        tools = get_comfy_tools()
+        results = tools.search_files(
+            pattern=request.pattern,
+            folder_type=request.folder_type,
+            file_pattern=request.file_pattern,
+            max_results=request.max_results,
+            context_lines=request.context_lines
+        )
+        
+        return ComfySearchFilesResponse(
+            pattern=request.pattern,
+            folder_type=request.folder_type.value,
+            results=results,
+            total_matches=len(results),
+            files_searched=0,  # Could track this if needed
+            truncated=len(results) >= request.max_results,
+            comfyui_root=str(tools.comfyui_root)
+        )
+        
+    except ComfyUINotFoundError as e:
+        raise RuntimeError(f"ComfyUI installation not found: {e}")
+    except ComfyUIError as e:
+        raise RuntimeError(f"ComfyUI search operation failed: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in comfy_search_files: {e}")
+        raise RuntimeError(f"Tool execution failed: {e}")
+    
 # Other Ideas
-#   Meta-Awareness: Awareness of the full environment including installed plugins (this is through python I'm assuming!)
+#   (**DONE**) Meta-Awareness: Awareness of the full environment including installed plugins (this is through python I'm assuming!)
 #   Workspace awareness: what tabs do you have? can we switch workflow tabs? etc. (from frontend then executed tools through here?)
 #   Workflow awareness: list workflows, find workflows? or like rather, be pointed at a folder or workflow to load? loading, etc. stuff that's in the file menu?
-#   Node Search and Node Finding: What is already possible through comfy lib? It'd be nice to have tools for find_installed_node that lets us search over all nodes names, descriptions, etc.
+#   (**DONE**) Node Search and Node Finding: What is already possible through comfy lib? It'd be nice to have tools for find_installed_node that lets us search over all nodes names, descriptions, etc.
 
 def main():
     mcp.run()
