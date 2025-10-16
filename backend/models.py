@@ -195,24 +195,24 @@ class WorkflowQuery(BaseModel):
 # Agent Context Models
 # ============================================================================
 
-class ConversationMessage(BaseModel):
-    """Single message in conversation history."""
+# class ConversationMessage(BaseModel):
+#     """Single message in conversation history."""
 
-    role: Literal["user", "assistant", "tool", "system"] = Field(
-        ..., description="Message role"
-    )
-    content: str = Field(..., description="Message content")
-    tool_name: Optional[str] = Field(None, description="Tool name if role is 'tool'")
-    timestamp: datetime = Field(
-        default_factory=datetime.now, description="Message timestamp"
-    )
-
+#     role: Literal["user", "assistant", "tool", "system"] = Field(
+#         ..., description="Message role"
+#     )
+#     content: str = Field(..., description="Message content")
+#     tool_name: Optional[str] = Field(None, description="Tool name if role is 'tool'")
+#     timestamp: datetime = Field(
+#         default_factory=datetime.now, description="Message timestamp"
+#     )
+from pydantic_ai.messages import ModelMessage
 
 class SessionContext(BaseModel):
     """Session context data."""
 
     session_id: str = Field(..., description="Session ID")
-    conversation_history: List[ConversationMessage] = Field(
+    conversation_history: List[ModelMessage] = Field(
         default_factory=list, description="Conversation history"
     )
     workflow_state: Dict[str, Any] = Field(
