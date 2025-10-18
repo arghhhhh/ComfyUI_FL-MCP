@@ -896,7 +896,7 @@ async def random_choice(request: RandomChoiceRequest, ctx: Context) -> Dict[str,
 # ============================================================================
 
 @mcp.tool()
-async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> ComfyListFoldersResponse:
+async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> Dict[str, Any]:
     """List contents of ComfyUI custom nodes, checkpoints, input, output and more with type-aware organization.
     
     This tool provides agents with deterministic access to ComfyUI directory structure.
@@ -932,7 +932,7 @@ async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> 
 
 
 @mcp.tool()
-async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> ComfyReadFileResponse:
+async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> Dict[str, Any]:
     """Read files within ComfyUI for analysis and understanding.
     
     This tool enables agents to examine ComfyUI files to understand capabilities or debug node settings.
@@ -979,7 +979,7 @@ async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> ComfyR
 
 
 @mcp.tool()
-async def comfy_search_resources(request: ComfySearchFilesRequest, ctx: Context) -> ComfySearchFilesResponse:
+async def comfy_search_resources(request: ComfySearchFilesRequest, ctx: Context) -> Dict[str, Any]:
     """Search for patterns in ComfyUI files to discover functionality.
     
     This tool enables agents to efficiently discover specific functionality.
