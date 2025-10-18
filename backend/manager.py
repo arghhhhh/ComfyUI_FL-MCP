@@ -6,6 +6,8 @@ from datetime import datetime, timedelta
 import logging
 from collections import deque
 
+import json
+
 from models import (
     HandshakeAck,
     ErrorMessage,
@@ -107,8 +109,15 @@ class ExecutionTracker:
         
     def handle_executing(self, data: Dict[str, Any]) -> None:
         """Handle executing event (node execution tracking)."""
-        prompt_id = data.get("prompt_id")
-        node_id = data.get("node")
+        try:
+            prompt_id = data.get("prompt_id")
+            node_id = data.get("node")
+        except Exception as e:
+            print(f"Error extracting message ids: {e}, Data: type({type(data)}) > {data}")
+            if isinstance(data, str):
+                data = json.loads(data)
+                prompt_id = data.get("prompt_id")
+                node_id = data.get("node")
         
         if not prompt_id or prompt_id not in self.active_executions:
             return
