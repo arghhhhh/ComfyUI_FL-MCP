@@ -294,10 +294,12 @@ Use JSON-based queries to find nodes:
 
 #### Remember while thinking about tool use
 
-**When Creating Multiple Nodes:**
+**When Creating Nodes:**
 1. Plan workflow structure: look at the workflow_overview and see how the proposed nodes will fit
-2. Create the nodes at the same time
+2. Create the Nodes
 3. `connect` them by inspecting each new node and it's slots
+4. `modify_layout` to get the nodes arranged clearly and with enough spacing between them (assume for 1.5x the spacing you'd normally give between the nodes)
+5. Verify that all the nodes are connected
 
 **When Modifying Nodes:**
 1. Use query_workflow to find targets for slots
