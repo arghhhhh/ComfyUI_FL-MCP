@@ -893,7 +893,10 @@ async def get_layout(request: GetLayoutRequest, ctx: Context) -> Dict[str, Any]:
 
 @mcp.tool()
 async def modify_layout(request: BatchLayoutRequest, ctx: Context) -> List[Dict[str, Any]]:
-    """Modify the layout of multiple nodes by setting their bounding boxes. Use this to rearrange many nodes at a time. Attempt to avoid overlaps. Before calling this tool call `get_layout` to get the current workflow layout or for some set of nodes"""
+    """Modify the layout of multiple nodes by setting their bounding boxes. Use this to rearrange many nodes at a time. Attempt to avoid overlaps. Before calling this tool call `get_layout` to get the current workflow layout or for some set of nodes.
+    
+    When defining bounding boxes make sure to account for vertical and horizontal spacing between elements that are supposed to be close.
+    """
     return await _execute_tool(ctx, "modify_layout", request.model_dump())
     # o = []
     # for rect in request.node_rects:
