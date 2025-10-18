@@ -243,6 +243,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 # Tool request from MCP subprocess - route to frontend
                 await route_tool_request_to_frontend(session_id, data)
             
+            elif msg_type == "comfy_error":
+                await manager.handle_comfy_error(data.get("data", {}))
+            
+            elif msg_type == "queue_status":
+                await manager.handle_queue_status(data.get("data", {}))
+            
+            elif msg_type == "execution_event":
+                event = data.get("event")
+                event_data = data.get("data", {})
+                await manager.handle_execution_event(event, event_data)
+            
             else:
                 await manager.send_error(
                     session_id,

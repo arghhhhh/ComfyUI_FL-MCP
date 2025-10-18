@@ -63,6 +63,20 @@ app.registerExtension({
                 if (message.status === 'reconnected') {
                     console.log("[FL_JS] Reconnected to existing session");
                 }
+                
+                // Setup ComfyUI listeners after handshake
+                if (window.app && window.app.api) {
+                    wsClient.setupComfyListeners(window.app.api);
+                } else {
+                    console.warn('[FL_JS] ComfyUI API not available yet, will retry');
+                    setTimeout(() => {
+                        if (window.app && window.app.api) {
+                            wsClient.setupComfyListeners(window.app.api);
+                        } else {
+                            console.error('[FL_JS] ComfyUI API still not available');
+                        }
+                    }, 1000);
+                }
             });
             
             wsClient.on('agent_response', (message) => {

@@ -23,6 +23,7 @@ from comfy_models import (
     ComfySearchFilesRequest, ComfySearchFilesResponse
 )
 from comfy_tools import get_comfy_tools, ComfyUIError, ComfyUINotFoundError
+from manager import manager
 
 logger = logging.getLogger(__name__)
 
@@ -466,6 +467,27 @@ class RandomChoiceRequest(BaseModel):
     """Request to pick random item from list."""
     items: List[Any] = Field(..., description="List of items to choose from")
 
+# Error Feedback
+class GetRecentErrorsRequest(BaseModel):
+    """Request to get recent execution errors."""
+    limit: int = Field(10, description="Number of recent errors to retrieve (default: 10, max: 100)")
+
+class GetErrorsForRunRequest(BaseModel):
+    """Request to get errors for a specific workflow run."""
+    prompt_id: str = Field(..., description="The prompt/run ID to get errors for")
+
+class GetQueueStatusDetailsRequest(BaseModel):
+    """Request to get detailed queue status and active executions."""
+    pass
+
+class GetExecutionDetailsRequest(BaseModel):
+    """Request to get execution details for a specific run."""
+    prompt_id: str = Field(..., description="The prompt/run ID to get details for")
+
+class ClearErrorBufferRequest(BaseModel):
+    """Request to clear the error buffer."""
+    pass
+
 
 # ============================================================================
 # QUERY & ANALYSIS TOOLS
@@ -773,7 +795,7 @@ async def move_node_bottom(request: MoveNodeBottomRequest, ctx: Context) -> Dict
 
 @mcp.tool()
 async def queue_workflow(request: QueueWorkflowRequest, ctx: Context) -> Dict[str, Any]:
-    """Queue the workflow for execution."""
+    """Queue the workflow for execution. User might say 'run' the workflow."""
     return await _execute_tool(ctx, "queue_workflow", request.model_dump())
 
 
@@ -1003,6 +1025,85 @@ async def comfy_search_resources(request: ComfySearchFilesRequest, ctx: Context)
     except Exception as e:
         logger.error(f"Unexpected error in comfy_search_files: {e}")
         raise RuntimeError(f"Tool execution failed: {e}")
+
+
+# ============================================================================
+# ERROR FEEDBACK & QUEUE STATUS TOOLS
+# ============================================================================
+
+@mcp.tool()
+async def get_recent_errors(request: GetRecentErrorsRequest, ctx: Context) -> Dict[str, Any]:
+    """Get recent execution errors from ComfyUI.
+    
+    Retrieves the N most recent errors that occurred during workflow execution.
+    Useful for debugging failed workflows and understanding error patterns.
+    """
+    limit = min(request.limit, 100)  # Cap at buffer size
+    errors = manager.error_buffer.get_recent_errors(limit)
+    return {
+        "errors": errors,
+        "count": len(errors),
+        "total_in_buffer": manager.error_buffer.get_count()
+    }
+
+@mcp.tool()
+async def get_errors_for_run(request: GetErrorsForRunRequest, ctx: Context) -> Dict[str, Any]:
+    """Get all errors for a specific workflow run.
+    
+    Retrieves all errors that occurred during a specific workflow execution,
+    identified by its prompt_id. Use this to debug why a particular run failed.
+    """
+    errors = manager.error_buffer.get_errors_for_prompt(request.prompt_id)
+    return {
+        "prompt_id": request.prompt_id,
+        "errors": errors,
+        "count": len(errors)
+    }
+
+@mcp.tool()
+async def get_queue_status_details(request: GetQueueStatusDetailsRequest, ctx: Context) -> Dict[str, Any]:
+    """Get current ComfyUI queue status and active executions.
+    
+    Returns information about currently running and queued workflows,
+    including execution progress and node tracking.
+    """
+    queue_status = manager.execution_tracker.get_queue_status()
+    active_executions = manager.execution_tracker.get_all_executions()
+    
+    return {
+        "queue": queue_status,
+        "active_executions": active_executions,
+        "execution_count": len(active_executions)
+    }
+
+@mcp.tool()
+async def get_execution_details(request: GetExecutionDetailsRequest, ctx: Context) -> Dict[str, Any]:
+    """Get detailed execution state for a specific workflow run.
+    
+    Provides comprehensive information about a workflow execution including
+    current node, executed nodes, cached nodes, and status.
+    """
+    execution = manager.execution_tracker.get_execution_state(request.prompt_id)
+    return {
+        "prompt_id": request.prompt_id,
+        "found": execution is not None,
+        "execution": execution
+    }
+
+@mcp.tool()
+async def clear_error_buffer(request: ClearErrorBufferRequest, ctx: Context) -> Dict[str, Any]:
+    """Clear the error buffer.
+    
+    Removes all stored errors from the buffer. Use this to start fresh
+    after fixing issues or when the buffer gets too cluttered.
+    """
+    previous_count = manager.error_buffer.get_count()
+    manager.error_buffer.clear()
+    return {
+        "cleared": True,
+        "previous_count": previous_count
+    }
+
     
 # Other Ideas
 #   (**DONE**) Meta-Awareness: Awareness of the full environment including installed plugins (this is through python I'm assuming!)
