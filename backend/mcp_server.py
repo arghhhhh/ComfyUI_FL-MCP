@@ -914,13 +914,13 @@ async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> 
         tools = get_comfy_tools()
         items = tools.list_folders(request.folder_type)
         
-        return ComfyListFoldersResponse(
-            folder_type=request.folder_type.value,
-            folder_path=tools.folder_mappings[request.folder_type],
-            items=items,
-            total_items=len(items),
-            comfyui_root=str(tools.comfyui_root)
-        )
+        return {
+            "folder_type": request.folder_type.value,
+            "folder_path": tools.folder_mappings[request.folder_type],
+            "items": items,
+            "total_items": len(items),
+            "comfyui_root": str(tools.comfyui_root)
+        }
         
     except ComfyUINotFoundError as e:
         raise RuntimeError(f"ComfyUI installation not found: {e}")
@@ -960,14 +960,14 @@ async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> Dict[s
         full_path = tools._validate_path(request.path)
         stat = full_path.stat()
         
-        return ComfyReadFileResponse(
-            path=request.path,
-            content=content,
-            size=stat.st_size,
-            encoding="utf-8",
-            extension=full_path.suffix,
-            comfyui_root=str(tools.comfyui_root)
-        )
+        return {
+            "path": request.path,
+            "content": content,
+            "size": stat.st_size,
+            "encoding": "utf-8",
+            "extension": full_path.suffix,
+            "comfyui_root": str(tools.comfyui_root)
+        }
         
     except ComfyUINotFoundError as e:
         raise RuntimeError(f"ComfyUI installation not found: {e}")
@@ -1008,15 +1008,15 @@ async def comfy_search_resources(request: ComfySearchFilesRequest, ctx: Context)
             context_lines=request.context_lines
         )
         
-        return ComfySearchFilesResponse(
-            pattern=request.pattern,
-            folder_type=request.folder_type.value,
-            results=results,
-            total_matches=len(results),
-            files_searched=0,  # Could track this if needed
-            truncated=len(results) >= request.max_results,
-            comfyui_root=str(tools.comfyui_root)
-        )
+        return {
+            "pattern": request.pattern,
+            "folder_type": request.folder_type.value,
+            "results": results,
+            "total_matches": len(results),
+            "files_searched": 0,  # Could track this if needed
+            "truncated": len(results) >= request.max_results,
+            "comfyui_root": str(tools.comfyui_root)
+        }
         
     except ComfyUINotFoundError as e:
         raise RuntimeError(f"ComfyUI installation not found: {e}")
