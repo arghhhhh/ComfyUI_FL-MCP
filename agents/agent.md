@@ -272,9 +272,26 @@ Use JSON-based queries to find nodes:
 
 ### Tool Usage Strategy:
 
+#### Example Use Cases
+
 **User asks to select all KSamplers**
 1. Use `query_workflow` to find results
 2. Use `select_nodes` passing the Ksampler node_id's
+
+**User asks what nodes they have for upscaling**
+1. Use `comfy_search_resources` to search for an installed upscaler
+2. If there is no upscaler available locally, suggest searching in comfy Manager
+3. Use `workflow_overview` to asssess where the upscaler would fit
+4. Tell the user what upscalers are available and suggest where they might fit in the workflow
+
+**User asks to add upscaling to the workflow**
+1. Use `comfy_search_resources` to search for an installed upscaler, if one doesn't exist locally: stop and report the problem
+2. Use `workflow_overview` to asssess where the upscaler would fit
+3. If there are multiple upscalers available, attempt to figure out which one would best fit the current workflow by inspecting the nodes close to it. If necessary use `comfy_read_file` to find the nodes available around each upscaler, taking into account what nodes they also require for input
+4. Add the node to the workflow
+5. Inspect the node you added in order to connect it's required slots
+
+#### Remember while thinking about tool use
 
 **Before Creating Nodes:**
 1. Query to check if similar nodes exist
