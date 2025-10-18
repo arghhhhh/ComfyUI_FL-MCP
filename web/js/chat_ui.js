@@ -621,6 +621,10 @@ export class ChatUI {
                 // Auto-resize after setting value
                 this.inputField.style.height = 'auto';
                 this.inputField.style.height = this.inputField.scrollHeight + 'px';
+                // Send it
+                (async () => {
+                    await this._sendMessage();
+                })();
             });
             questionsContainer.appendChild(questionEl);
         });

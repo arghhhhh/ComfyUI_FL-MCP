@@ -315,8 +315,8 @@ class SetNodeValuesRequest(BaseModel):
 
 class ConnectNodesRequest(BaseModel):
     """Request to connect two nodes."""
-    source_node_id: Union[int, str] = Field(..., description="Source node ID or title")
-    target_node_id: Union[int, str] = Field(..., description="Target node ID or title")
+    source_node_id: Union[int, str] = Field(..., description="Source node ID or title, must be a number: 1-9999")
+    target_node_id: Union[int, str] = Field(..., description="Target node ID or title, must be a number: 1-9999")
     source_slot: Optional[Union[str, int]] = Field(None, description="Source output slot name or index (auto-match if not provided)")
     target_slot: Optional[Union[str, int]] = Field(None, description="Target input slot name or index (auto-match if not provided)")
     auto_match: bool = Field(True, description="Enable auto-matching by type if slot names not found")
