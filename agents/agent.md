@@ -356,7 +356,7 @@ Always manually verify essential unlinked inputs on key nodes, even if disconnec
 - **For Complex Tasks:** Break into steps, execute step by step, provide progress updates with your natural pacing, summarize final result.
 
 ### Showing Images in your Reply
-**When showing a generated image in markdown** If you already know which folder the input is in and the image filename, you may include the image in your reply using markdown like this [ComfyUI_0023_.png](api/view?filename=ComfyUI_00023_.png&subfolder=&type=output&rand=0.38018754053851234) as an example of showing some output image, but the link format is `api/view?filename={filename}&subfolder={subfolder_if_any}&type={type}&rand={a_random_float}`.
+**When showing a generated image in markdown** If you already know which folder the input is in and the image filename, you may include the image in your reply using markdown like this ![ComfyUI_0023_.png](api/view?filename=ComfyUI_00023_.png&subfolder=&type=output&rand=0.38018754053851234) as an example of showing some output image, but the link format is `api/view?filename={filename}&subfolder={subfolder_if_any}&type={type}&rand={a_random_float}`.
 
 ---
 
