@@ -856,6 +856,58 @@ export class FL_API {
         }
     }
 
+    /**
+     * Modify layout for multiple nodes by setting their rectangles
+     * @param {object} nodeRects - rect objects mapped by nodeId {nodeId: {x, y, width, height}}
+     * @returns {Array<object>} Array of results with updated rectangles or errors
+     */
+    modifyLayout(nodeRects = null) {
+        try {
+            // Input validation
+            if (!nodeRects || typeof nodeRects !== 'object') {
+                console.log('[FL_API] modifyLayout: No node rects provided');
+                return [];
+            }
+
+            const results = [];
+            let processed = 0;
+            let successful = 0;
+            let failed = 0;
+
+            // Process each node
+            for (const [nodeIdStr, rect] of Object.entries(nodeRects)) {
+                const nodeId = parseInt(nodeIdStr, 10);
+                processed++;
+
+                try {
+                    // Call setRect and collect result
+                    const updatedRect = this.setRect(nodeId, rect);
+                    results.push({
+                        node_id: nodeId,
+                        rect: updatedRect,
+                        success: true
+                    });
+                    successful++;
+                } catch (error) {
+                    console.error(`[FL_API] modifyLayout: Error setting rect for node ${nodeId}:`, error);
+                    results.push({
+                        node_id: nodeId,
+                        success: false,
+                        error: error.message
+                    });
+                    failed++;
+                }
+            }
+
+            console.log(`[FL_API] modifyLayout: Processed ${processed} nodes (${successful} successful, ${failed} failed)`);
+            return results;
+            
+        } catch (error) {
+            console.error('[FL_API] modifyLayout error:', error);
+            throw error;
+        }
+    }
+
 
     /**
      * Set node rectangle (position and/or size)
