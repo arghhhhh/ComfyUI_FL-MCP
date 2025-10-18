@@ -1,0 +1,2 @@
+- getting error flows back into the agent's run tool execution stream
+- letting each tab in workflows in the UI have it's own Chat Session (reloading chat history on load in the chat drawer?)
