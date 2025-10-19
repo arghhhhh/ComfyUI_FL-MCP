@@ -21,12 +21,20 @@ export class ChatUI {
         this.messages = [];
         this.isTyping = false;
         
+        // Override the default link renderer
+        renderer.link = function(href, title, text) {
+        // Escape quotes in title if necessary
+        const safeTitle = title ? ` title="${title}"` : "";
+        return `<a href="${href}"${safeTitle} target="_blank" rel="noopener noreferrer">${text}</a>`;
+        };
+
         // Configure marked for safe rendering
         marked.setOptions({
             breaks: true,
             gfm: true,
             headerIds: false,
-            mangle: false
+            mangle: false,
+            renderer
         });
         
         // Configure mermaid
