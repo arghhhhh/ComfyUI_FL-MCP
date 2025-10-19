@@ -757,7 +757,8 @@ export class ChatUI {
             "What models and node packs are missing from this workflow?",
             "My workflow isn't working—can you help debug it?",
             "How can I organize my nodes better?",
-            "Analyze the prompts in the workflow"
+            "Analyze the prompts in the workflow",
+            "Make something cool"
         ];
         
         const questionsContainer = document.createElement('div');
