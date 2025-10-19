@@ -21,6 +21,9 @@ export class ChatUI {
         this.messages = [];
         this.isTyping = false;
         
+        // Create a custom renderer
+        const renderer = new marked.Renderer();
+
         // Override the default link renderer
         renderer.link = function(href, title, text) {
         // Escape quotes in title if necessary
