@@ -56,6 +56,13 @@ app.registerExtension({
             
             wsClient.on('disconnected', (event) => {
                 console.log("[FL_JS] Disconnected from backend server:", event.code);
+                
+                // Cleanup tool activity on disconnect
+                try {
+                    window.FL_JS?.chatUI?.toolActivity?.cleanup();
+                } catch (error) {
+                    console.warn('[FL_JS] Could not cleanup tool activity on disconnect:', error);
+                }
             });
             
             wsClient.on('handshake_ack', (message) => {
@@ -81,10 +88,28 @@ app.registerExtension({
             
             wsClient.on('agent_response', (message) => {
                 console.log("[FL_JS] Agent response received:", message.content);
+                
+                // Hide all tool activity cards on agent response
+                try {
+                    window.FL_JS?.chatUI?.toolActivity?.hideAllTools();
+                } catch (error) {
+                    console.warn('[FL_JS] Could not hide tool activity on agent response:', error);
+                }
             });
             
             wsClient.on('tool_request', async (message) => {
                 console.log("[FL_JS] ⚡ TOOL REQUEST EVENT FIRED:", message.tool_name, 'request_id:', message.request_id);
+                
+                // Show tool activity card
+                try {
+                    window.FL_JS?.chatUI?.toolActivity?.showTool(
+                        message.tool_name, 
+                        message.request_id || 'default'
+                    );
+                } catch (error) {
+                    console.warn('[FL_JS] Could not show tool activity:', error);
+                }
+                
                 console.log("[FL_JS] ⚡ Calling toolExecutor.executeToolRequest...");
                 try {
                     await toolExecutor.executeToolRequest(message);
@@ -100,10 +125,24 @@ app.registerExtension({
             
             wsClient.on('error', (error) => {
                 console.error("[FL_JS] Error:", error);
+                
+                // Cleanup tool activity on error
+                try {
+                    window.FL_JS?.chatUI?.toolActivity?.cleanup();
+                } catch (error) {
+                    console.warn('[FL_JS] Could not cleanup tool activity on error:', error);
+                }
             });
             
             wsClient.on('max_reconnect_reached', () => {
                 console.error("[FL_JS] Max reconnection attempts reached. Please check backend server.");
+                
+                // Cleanup tool activity on max reconnect
+                try {
+                    window.FL_JS?.chatUI?.toolActivity?.cleanup();
+                } catch (error) {
+                    console.warn('[FL_JS] Could not cleanup tool activity on max reconnect:', error);
+                }
             });
             
             // Store instances globally for other modules
@@ -181,7 +220,7 @@ app.registerExtension({
                     if (!chatUI) {
                         chatUI = new ChatUI(el, wsClient);
                         window.FL_JS.chatUI = chatUI;
-                        console.log("[FL_JS] Chat UI initialized in sidebar");
+                        console.log("[FL_JS] Chat UI initialized in sidebar with tool activity");
                     }
                     
                     return el;

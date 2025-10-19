@@ -10,6 +10,7 @@
 
 import { marked } from "https://cdn.jsdelivr.net/npm/marked@11.1.1/+esm";
 import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10.6.1/+esm";
+import { ToolActivity } from './tool_activity.js';
 
 /**
  * ChatUI class - Manages chat interface and message rendering
@@ -52,7 +53,17 @@ export class ChatUI {
         this._initializeUI();
         this._attachEventHandlers();
         
-        console.log('[ChatUI] Initialized');
+        // Initialize tool activity after UI is ready
+        this.toolActivity = new ToolActivity(this.container);
+        
+        // Make ChatUI globally available for tool activity access
+        if (window.FL_JS) {
+            window.FL_JS.chatUI = this;
+        } else {
+            window.FL_JS = { chatUI: this };
+        }
+        
+        console.log('[ChatUI] Initialized with tool activity');
     }
 
     /**
@@ -155,6 +166,7 @@ export class ChatUI {
                 color: var(--fg-color, #e0e0e0);
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 overflow: hidden; /* Prevent layout itself from scrolling */
+                position: relative; /* For tool activity overlay positioning */
             }
 
             /* Header */
@@ -479,6 +491,7 @@ export class ChatUI {
                 align-items: flex-end;
                 flex-shrink: 0; /* Keep input fixed at bottom */
                 background: var(--bg-color, #1e1e1e); /* Ensure background */
+                position: relative; /* For tool activity overlay positioning */
             }
 
             .fl-chat-input {
@@ -534,6 +547,95 @@ export class ChatUI {
                 opacity: 0.5;
                 cursor: not-allowed;
             }
+
+            /* Tool Activity Overlay */
+            .fl-tool-activity-overlay {
+                position: absolute;
+                bottom: 100%; /* Above input container */
+                left: 0;
+                right: 0;
+                pointer-events: none;
+                z-index: 100;
+                padding: 8px 16px 0 16px;
+                display: flex;
+                flex-direction: column-reverse;
+                gap: 6px;
+                max-height: 150px;
+                overflow: hidden;
+            }
+
+            .fl-tool-card {
+                background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+                border: 1px solid rgba(255, 107, 53, 0.3);
+                border-radius: 8px;
+                padding: 8px 12px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+                backdrop-filter: blur(4px);
+                opacity: 0;
+                transform: translateY(10px);
+                transition: all 0.2s ease-out;
+                max-width: 280px;
+                font-size: 11px;
+                pointer-events: none;
+            }
+
+            .fl-tool-card.exiting {
+                opacity: 0 !important;
+                transform: translateY(10px) !important;
+                transition: all 0.3s ease-in !important;
+            }
+
+            .fl-tool-header {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-weight: 600;
+                font-size: 10px;
+                color: #ff6b35;
+                margin-bottom: 2px;
+            }
+
+            .fl-tool-icon {
+                font-size: 12px;
+            }
+
+            .fl-tool-label {
+                opacity: 0.8;
+            }
+
+            .fl-tool-text {
+                color: #e0e0e0;
+                line-height: 1.2;
+                opacity: 0.9;
+                margin-bottom: 4px;
+            }
+
+            .fl-tool-activity {
+                display: flex;
+                align-items: center;
+                gap: 2px;
+            }
+
+            .fl-activity-dot {
+                width: 3px;
+                height: 3px;
+                background: #ff6b35;
+                border-radius: 50%;
+                animation: toolPulse 1.4s ease-in-out infinite;
+            }
+
+            .fl-activity-dot:nth-child(2) {
+                animation-delay: 0.2s;
+            }
+
+            .fl-activity-dot:nth-child(3) {
+                animation-delay: 0.4s;
+            }
+
+            @keyframes toolPulse {
+                0%, 80%, 100% { opacity: 0.3; }
+                40% { opacity: 1; }
+            }
         `;
         
         document.head.appendChild(style);
@@ -564,10 +666,34 @@ export class ChatUI {
         // WebSocket event handlers
         if (this.wsClient) {
             this.wsClient.on('connected', () => this._updateConnectionStatus('connected'));
-            this.wsClient.on('disconnected', () => this._updateConnectionStatus('disconnected'));
+            this.wsClient.on('disconnected', () => {
+                this._updateConnectionStatus('disconnected');
+                // Cleanup tool activity on disconnect
+                try {
+                    this.toolActivity?.cleanup();
+                } catch (error) {
+                    console.warn('[ChatUI] Could not cleanup tool activity on disconnect:', error);
+                }
+            });
             this.wsClient.on('connecting', () => this._updateConnectionStatus('connecting'));
-            this.wsClient.on('agent_response', (data) => this._handleAgentResponse(data));
-            this.wsClient.on('error', (data) => this._handleError(data));
+            this.wsClient.on('agent_response', (data) => {
+                // Hide all tool activity cards on agent response
+                try {
+                    this.toolActivity?.hideAllTools();
+                } catch (error) {
+                    console.warn('[ChatUI] Could not hide tool activity on agent response:', error);
+                }
+                this._handleAgentResponse(data);
+            });
+            this.wsClient.on('error', (data) => {
+                // Cleanup tool activity on error
+                try {
+                    this.toolActivity?.cleanup();
+                } catch (error) {
+                    console.warn('[ChatUI] Could not cleanup tool activity on error:', error);
+                }
+                this._handleError(data);
+            });
         }
     }
 
@@ -893,6 +1019,13 @@ export class ChatUI {
      * Destroy chat UI
      */
     destroy() {
+        // Cleanup tool activity
+        try {
+            this.toolActivity?.cleanup();
+        } catch (error) {
+            console.warn('[ChatUI] Could not cleanup tool activity on destroy:', error);
+        }
+        
         this.container.innerHTML = '';
         console.log('[ChatUI] Destroyed');
     }
