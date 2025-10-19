@@ -54,7 +54,7 @@ class MCPWebSocketClient:
         ping_timeout: int = 20,
         open_timeout: int = 20,
         close_timeout: int = 10,
-        max_queue: int | None = None,
+        max_queue: int = None,
         reconnect_min: float = 0.5,
         reconnect_max: float = 10.0,
     ):
@@ -71,10 +71,10 @@ class MCPWebSocketClient:
         self.reconnect_min = reconnect_min
         self.reconnect_max = reconnect_max
 
-        self.ws: websockets.WebSocketClientProtocol | None = None
+        self.ws: websockets.WebSocketClientProtocol = None
         self.connected = False
 
-        self._receive_task: asyncio.Task | None = None
+        self._receive_task: asyncio.Task = None
         self._connect_lock = asyncio.Lock()
         self._closing = asyncio.Event()
 
