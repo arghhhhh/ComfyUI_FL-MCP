@@ -206,7 +206,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             logger.info(f"Agent created/retrieved for session {session_id}")
         
         # Start MCP servers for frontend connections and wrap message loop
-        async with agent.run_mcp_servers() if agent else asynccontextmanager(lambda: (yield))():
+        async with agent.run_mcp_servers(): # if agent else asynccontextmanager(lambda: (yield))():
             if agent:
                 logger.info(f"MCP servers started for session {session_id}")
             
