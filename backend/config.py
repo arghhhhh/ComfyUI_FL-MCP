@@ -5,7 +5,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import logging
 
-from backend.model_defaults import (
+from model_defaults import (
     get_default_model,
     validate_provider_model,
     get_provider_tuning

@@ -16,11 +16,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic_ai import Agent, UnexpectedModelBehavior
 
-from backend.config import settings
+from config import settings
 from manager import manager
-from backend.callback_router import CallbackRouter, current_session_id
-from backend.agent import agent_manager
-from backend.models import (
+from callback_router import CallbackRouter, current_session_id
+from agent import agent_manager
+from models import (
     Handshake,
     UserMessage,
     ToolResult,
