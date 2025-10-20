@@ -1,5 +1,5 @@
 {
-  "current_mode": "implementation",
+  "current_mode": "debugging",
   "project": "fl_js",
   "task": "implement ren://message link handler",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
@@ -75,7 +75,7 @@
   "fix_status": "user already implemented",
   "problem": "tool_result not reaching MCP subprocess",
   "evidence": "frontend: 2fb936e8-ef7c... | backend expects: 60ae9f3d-6a44...",
-  "hypothesis": "pack_info from getmappings might not always be a list",
+  "hypothesis": "_sendMessage needs parameter support",
   "key_finding": "Fill branch changes default from openrouter/deepseek to gemini/gemini-2.5-flash with new provider pattern",
   "missing_log": "no [SEND] debug logs from manager.send_message",
   "fix_applied": "Correctly parse pack_id as dict key, node_list as pack_data[0]",
@@ -262,5 +262,6 @@
   "showing_example": true,
   "tools_updated": 16,
   "file_modified": "backend/comfy_manager.py",
-  "lines_changed": "~15 lines in get_node_mappings method"
+  "lines_changed": "~15 lines in get_node_mappings method",
+  "issue": "ren-link click handler not working"
 }

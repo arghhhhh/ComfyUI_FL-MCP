@@ -310,18 +310,21 @@ export class ChatUI {
 
     /**
      * Send user message
+     * @param {string} messageText - Optional message text (if not provided, uses input field)
      * @private
      */
-    async _sendMessage() {
-        const message = this.inputField.value.trim();
+    async _sendMessage(messageText = null) {
+        const message = messageText || this.inputField.value.trim();
         if (!message) return;
         
         // Add user message to UI
         this.addMessage('user', message);
         
-        // Clear input
-        this.inputField.value = '';
-        this.inputField.style.height = 'auto';
+        // Clear input only if we're using the input field
+        if (!messageText) {
+            this.inputField.value = '';
+            this.inputField.style.height = 'auto';
+        }
         
         // Show typing indicator
         this.setTyping(true);
