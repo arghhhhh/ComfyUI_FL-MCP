@@ -1,7 +1,7 @@
 {
-  "current_mode": "implementation",
+  "current_mode": "research",
   "project": "fl_js",
-  "task": "fill_merge implementation - Phase 1 complete, starting Phase 2",
+  "task": "fill_merge branch comparison complete",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
   "focus": "provider abstraction layer with conflict-free merge",
@@ -70,7 +70,7 @@
   "main_focus": "fl_api.js function to expose selected nodes to MCP server tool",
   "investigation_complete": true,
   "phase_1_complete": "true",
-  "phase_2_complete": "true",
+  "phase_2_complete": true,
   "phase_3_complete": "true",
   "last_note": "notes/get_selected_nodes_feature/research_findings.md",
   "fix_status": "user already implemented",
@@ -103,7 +103,7 @@
     "merge_plan.md",
     "provider mapping implementation"
   ],
-  "recommendation": "implement agent-first filesystem approach with 3 core tools",
+  "recommendation": "Test provider abstraction, then selectively adopt Fill features in phases",
   "key_insight": "dont trust catalogs trust code let agents inspect directly",
   "implementation_time": "1-2 weeks vs 4-8 weeks for traditional",
   "deliverable": "comprehensive MCP server tool definitions with extensive docstrings",
@@ -181,7 +181,7 @@
   "ideas_document": "notes/expressing_tools/ideas.md",
   "investigation_document": "notes/expressing_tools/investigation.md",
   "refined_ideas_document": "notes/expressing_tools/ideas.md",
-  "key_findings": "Fill branch is Gemini-optimized with new provider pattern, flattened schemas, and retry logic. Main issue is hardcoded defaults without abstraction.",
+  "key_findings": "fill_merge successfully adopted Fill's Gemini optimizations while adding provider abstraction. Fill has additional features (Manager tools, ren links, batch ops) that can be merged incrementally.",
   "implementation_document": "notes/expressing_tools/implementation.md",
   "key_components": "ToolActivity class, ChatUI integration, extension event handlers",
   "primary_suspects": "CSS positioning, tool execution speed, DOM insertion",
@@ -233,7 +233,8 @@
   "deliverables_complete": [
     "investigation.md",
     "merge_plan.md",
-    "branch_comparison_overview.md"
+    "branch_comparison.md",
+    "progress.md"
   ],
   "merge_strategy": "create fill_merge branch, implement all improvements, verify no conflicts with Fill",
   "risk_assessment": "Low risk - incremental changes with backward compatibility",
@@ -264,5 +265,6 @@
   "tools_updated": 16,
   "file_modified": "backend/comfy_manager.py",
   "lines_changed": "~15 lines in get_node_mappings method",
-  "issue": "ren-link click handler not working"
+  "issue": "ren-link click handler not working",
+  "branch_comparison_complete": true
 }
