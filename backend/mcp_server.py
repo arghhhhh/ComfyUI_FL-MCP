@@ -692,7 +692,7 @@ async def select_nodes(request: SelectNodesRequest, ctx: Context) -> Dict[str, A
 
 
 @mcp.tool()
-async def get_current_user_focus(request: GetSelectedNodesRequest, ctx: Context) -> Dict[str, Any]:
+async def get_current_node_selection(request: GetSelectedNodesRequest, ctx: Context) -> Dict[str, Any]:
     """Get currently selected nodes in ComfyUI to understand user's current focus.
     
     This tool provides context-aware assistance by returning detailed information
