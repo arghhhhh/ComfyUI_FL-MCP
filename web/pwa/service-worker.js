@@ -13,12 +13,13 @@ const urlsToCache = [
     '/pwa/static/manifest.json',
     '/pwa/static/icons/icon-192.png',
     '/pwa/static/icons/icon-512.png',
-    // Shared JS modules
-    '/web/js/session_manager.js',
-    '/web/js/ws_client.js',
-    '/web/js/chat_ui.js',
-    '/web/js/style.css',
-    '/web/js/_components/MessageBubble.js',
+    // Shared JS modules (now served from /js/)
+    '/js/session_manager.js',
+    '/js/ws_client.js',
+    '/js/chat_ui.js',
+    '/js/style.css',
+    '/js/_components/MessageBubble.js',
+    '/js/tool_activity.js',
 ];
 
 // Install event - cache assets

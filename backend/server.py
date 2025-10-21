@@ -100,12 +100,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Get project root and PWA directory
+# Get project root and directories
 PROJECT_ROOT = Path(__file__).parent.parent
 PWA_DIR = PROJECT_ROOT / "web" / "pwa"
+WEB_JS_DIR = PROJECT_ROOT / "web" / "js"
 
 # Serve PWA static files
 app.mount("/pwa/static", StaticFiles(directory=str(PWA_DIR)), name="pwa_static")
+
+# Serve shared JavaScript modules
+app.mount("/js", StaticFiles(directory=str(WEB_JS_DIR)), name="shared_js")
 
 
 @app.get("/")

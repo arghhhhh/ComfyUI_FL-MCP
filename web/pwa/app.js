@@ -4,9 +4,9 @@
  * Mobile Progressive Web App for controlling ComfyUI via Ren assistant.
  */
 
-import SessionManager from '../js/session_manager.js';
-import WSClient from '../js/ws_client.js';
-import { ChatUI } from '../js/chat_ui.js';
+import SessionManager from '/js/session_manager.js';
+import WSClient from '/js/ws_client.js';
+import { ChatUI } from '/js/chat_ui.js';
 
 class RenPWA {
     constructor() {

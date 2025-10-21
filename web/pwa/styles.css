@@ -1,5 +1,5 @@
 /* Import base styles from chat UI */
-@import url('../js/style.css');
+@import url('/js/style.css');
 
 /* PWA-specific overrides and additions */
 
