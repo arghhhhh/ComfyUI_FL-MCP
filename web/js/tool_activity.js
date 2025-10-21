@@ -58,6 +58,11 @@ export const TOOL_CONFIG = {
         label: "Get Selection",
         description: "Reading currently selected nodes"
     },
+    "focus_on_nodes": {
+        icon: "🔭",
+        label: "Focus",
+        description: "Fitting canvas view to nodes"
+    },
 
     // Layout & Organization
     "modify_layout": {
@@ -203,6 +208,13 @@ export const TOOL_CONFIG = {
         description: "Sending generated images to chat"
     },
 
+    // Screenshot & Capture
+    "take_screenshot": {
+        icon: "📸",
+        label: "Screenshot",
+        description: "Capturing canvas as image"
+    },
+
     // Python-only tools
     "calculate_expressions": {
         icon: "🧮",
@@ -317,213 +329,3 @@ export function getToolConfig(toolName) {
     return TOOL_CONFIG[toolName] || TOOL_CONFIG["*"];
 }
 
-/**
- * Tool Activity Visualization
- * Shows floating cards when tools are executing
- */
-export class ToolActivity {
-    constructor(chatContainer) {
-        this.chatContainer = chatContainer;
-        this.activeCards = new Map(); // request_id -> {element, timeout}
-        this.overlay = null;
-        this.maxVisible = 3;
-        this.autoCleanupMs = 30000; // 30 seconds fallback
-        
-        this._createOverlay();
-        console.log('[ToolActivity] Initialized');
-    }
-
-    /**
-     * Show tool activity card
-     * @param {string} toolName - Name of the tool being executed
-     * @param {string} requestId - Unique request identifier
-     */
-    showTool(toolName, requestId = 'default') {
-        console.log(`[ToolActivity] Showing tool: ${toolName} (${requestId})`);
-        
-        // Get tool configuration from exported config
-        const config = getToolConfig(toolName);
-        
-        // Create card element
-        const card = this._createCard(config, requestId, toolName);
-        
-        // Add to active cards
-        this._addCard(card, requestId);
-        
-        // Set fallback cleanup timer
-        const timeout = setTimeout(() => {
-            console.log(`[ToolActivity] Auto-cleanup for ${requestId}`);
-            this.hideTool(requestId);
-        }, this.autoCleanupMs);
-        
-        this.activeCards.get(requestId).timeout = timeout;
-        
-        // Add viewport verification
-        requestAnimationFrame(() => {
-            const rect = card.getBoundingClientRect();
-            if (rect.top < 0 || rect.bottom > window.innerHeight) {
-                console.warn('[ToolActivity] Card out of viewport:', rect);
-                this._adjustCardPosition(card);
-            }
-        });
-    }
-
-    /**
-     * Adjust card position if out of viewport
-     * @private
-     */
-    _adjustCardPosition(card) {
-        const rect = card.getBoundingClientRect();
-        if (rect.bottom > window.innerHeight) {
-            card.style.marginBottom = `${rect.bottom - window.innerHeight + 20}px`;
-        }
-    }
-
-    /**
-     * Hide specific tool card
-     * @param {string} requestId - Request identifier to hide
-     */
-    hideTool(requestId) {
-        const cardData = this.activeCards.get(requestId);
-        if (!cardData) return;
-        
-        console.log(`[ToolActivity] Hiding tool: ${requestId}`);
-        
-        // Clear timeout
-        if (cardData.timeout) {
-            clearTimeout(cardData.timeout);
-        }
-        
-        // Animate out and remove
-        this._removeCard(requestId);
-    }
-
-    /**
-     * Hide all active tool cards
-     */
-    hideAllTools() {
-        console.log('[ToolActivity] Hiding all tools');
-        
-        const requestIds = Array.from(this.activeCards.keys());
-        requestIds.forEach(requestId => {
-            this.hideTool(requestId);
-        });
-    }
-
-    /**
-     * Create overlay container
-     * @private
-     */
-    _createOverlay() {
-        this.overlay = document.createElement('div');
-        this.overlay.className = 'fl-tool-activity-overlay';
-        
-        // Insert below chat content instead of above input
-        const chatContent = this.chatContainer.querySelector('.fl-chat-content');
-        if (chatContent) {
-            chatContent.appendChild(this.overlay);
-        } else {
-            // Fallback: append to container
-            this.chatContainer.appendChild(this.overlay);
-        }
-    }
-
-    /**
-     * Create tool card element
-     * @private
-     */
-    _createCard(config, requestId, toolName) {
-        const card = document.createElement('div');
-        card.className = 'fl-tool-card';
-        card.dataset.requestId = requestId;
-        card.dataset.toolName = toolName;
-        
-        card.innerHTML = `
-            <div class="fl-tool-header">
-                <span class="fl-tool-icon">${config.icon}</span>
-                <span class="fl-tool-label">Ren is...</span>
-            </div>
-            <div class="fl-tool-text">${config.description}</div>
-            <div class="fl-tool-activity">
-                <div class="fl-activity-dot"></div>
-                <div class="fl-activity-dot"></div>
-                <div class="fl-activity-dot"></div>
-            </div>
-        `;
-        
-        return card;
-    }
-
-    /**
-     * Add card to overlay with animation
-     * @private
-     */
-    _addCard(card, requestId) {
-        // Manage card limit
-        this._enforceCardLimit();
-        
-        // Add to DOM
-        this.overlay.appendChild(card);
-        
-        // Store reference
-        this.activeCards.set(requestId, { element: card, timeout: null });
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            card.style.opacity = '1';
-            card.style.transform = 'translateY(0)';
-        });
-    }
-
-    /**
-     * Remove card with animation
-     * @private
-     */
-    _removeCard(requestId) {
-        const cardData = this.activeCards.get(requestId);
-        if (!cardData) return;
-        
-        const card = cardData.element;
-        
-        // Animate out
-        card.classList.add('exiting');
-        
-        // Remove after animation
-        setTimeout(() => {
-            if (card.parentNode) {
-                card.parentNode.removeChild(card);
-            }
-            this.activeCards.delete(requestId);
-        }, 300); // Match CSS animation duration
-    }
-
-    /**
-     * Enforce maximum visible cards
-     * @private
-     */
-    _enforceCardLimit() {
-        if (this.activeCards.size >= this.maxVisible) {
-            // Remove oldest card
-            const oldestRequestId = this.activeCards.keys().next().value;
-            this.hideTool(oldestRequestId);
-        }
-    }
-
-    /**
-     * Cleanup all cards (for disconnect/error scenarios)
-     */
-    cleanup() {
-        console.log('[ToolActivity] Cleaning up all cards');
-        this.hideAllTools();
-    }
-
-    /**
-     * Get current activity status
-     */
-    getStatus() {
-        return {
-            activeCount: this.activeCards.size,
-            activeTools: Array.from(this.activeCards.keys())
-        };
-    }
-}

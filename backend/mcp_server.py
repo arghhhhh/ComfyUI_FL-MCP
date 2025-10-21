@@ -822,7 +822,7 @@ async def select_nodes(request: SelectNodesRequest, ctx: Context) -> Dict[str, A
 
 @mcp.tool()
 async def focus_on_nodes(request: FocusOnNodesRequest, ctx: Context) -> Dict[str, Any]:
-    """Fit canvas view to show specific nodes or current selection.
+    """Fit canvas view to show specific nodes or current selection. If you don't know what nodes to focus on, use `workflow_overview` to get some node ids based on your task
     
     This tool adjusts the canvas viewport to center and fit the specified nodes,
     making them clearly visible. Useful for:
@@ -848,7 +848,7 @@ async def focus_on_nodes(request: FocusOnNodesRequest, ctx: Context) -> Dict[str
 
 @mcp.tool()
 async def take_screenshot(request: TakeScreenshotRequest, ctx: Context) -> Dict[str, Any]:
-    """Capture the current ComfyUI canvas as an image.
+    """Capture the current ComfyUI canvas as an image. Make sure to use focus_on_nodes before this always.
     
     This tool takes a screenshot of the workflow canvas and saves it to
     output/screenshots/. The screenshot can then be displayed to the user

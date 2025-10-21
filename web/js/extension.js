@@ -131,23 +131,7 @@ app.registerExtension({
 
                 const toolConfig = getToolConfig(message.tool_name);
 
-                // Show tool activity in floating card
-                try {
-                    const reportId = `report-${Date.now()}-${Math.random()}`;
-                    window.FL_JS?.chatUI?.toolActivity?.showTool(
-                        message.tool_name,
-                        reportId
-                    );
-
-                    // Auto-hide after 3 seconds for Python-only tools
-                    setTimeout(() => {
-                        window.FL_JS?.chatUI?.toolActivity?.hideTool(reportId);
-                    }, 3000);
-                } catch (error) {
-                    console.warn('[FL_JS] Could not show tool report:', error);
-                }
-
-                // Add to breadcrumb chain as well
+                // Add to breadcrumb chain
                 try {
                     window.FL_JS?.chatUI?.startToolInChain(
                         message.tool_name,
