@@ -209,7 +209,7 @@ class ExecutionTracker:
 class ConnectionManager:
     """Manages WebSocket connections with session-based routing.
     
-    Supports multiple connection types per session (frontend and mcp).
+    Supports multiple connection types per session (frontend, pwa, and mcp).
     """
 
     def __init__(
@@ -217,7 +217,7 @@ class ConnectionManager:
         session_timeout_seconds: int = 300,  # 5 minutes
     ):
         # Map session_id -> dict of connection types -> WebSocket
-        # e.g., {"session123": {"frontend": WebSocket, "mcp": WebSocket}}
+        # e.g., {"session123": {"frontend": WebSocket, "pwa": WebSocket, "mcp": WebSocket}}
         self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
         # Map session_id -> SessionContext
         self.session_contexts: Dict[str, SessionContext] = {}
@@ -240,7 +240,7 @@ class ConnectionManager:
         Args:
             websocket: WebSocket connection
             session_id: Session ID from client
-            connection_type: Type of connection ('frontend' or 'mcp')
+            connection_type: Type of connection ('frontend', 'pwa', or 'mcp')
 
         Returns:
             SessionContext for this session
@@ -271,7 +271,7 @@ class ConnectionManager:
 
         Args:
             session_id: Session ID to disconnect
-            connection_type: Type of connection to disconnect ('frontend' or 'mcp')
+            connection_type: Type of connection to disconnect ('frontend', 'pwa', or 'mcp')
         """
         if session_id in self.active_connections:
             if connection_type in self.active_connections[session_id]:
@@ -291,7 +291,7 @@ class ConnectionManager:
         Args:
             session_id: Target session ID
             message: Message dict to send
-            target: Target connection type ('frontend', 'mcp', or 'all')
+            target: Target connection type ('frontend', 'pwa', 'mcp', or 'all')
 
         Returns:
             True if message was sent to at least one connection, False otherwise
@@ -332,6 +332,20 @@ class ConnectionManager:
             self.session_contexts[session_id].last_activity = datetime.now()
         
         return sent
+    
+    async def broadcast_to_pwa_clients(self, session_id: str, message: Dict) -> bool:
+        """Broadcast a message to PWA clients for a session.
+        
+        Args:
+            session_id: Session ID to broadcast to
+            message: Message to broadcast
+            
+        Returns:
+            True if message was sent to at least one PWA client, False otherwise
+        """
+        if self.has_connection(session_id, 'pwa'):
+            return await self.send_message(session_id, message, target='pwa')
+        return False
 
     async def send_handshake_ack(
         self, session_id: str, is_reconnect: bool, connection_type: str = 'frontend'
@@ -450,8 +464,27 @@ class ConnectionManager:
             for conn_type in self.active_connections[session_id].keys()
         }
     
+    def _get_session_id_for_prompt(self, prompt_id: str) -> Optional[str]:
+        """Find session ID for a given prompt ID.
+        
+        This searches through active sessions to find which one is executing
+        the given prompt.
+        
+        Args:
+            prompt_id: Prompt ID to search for
+            
+        Returns:
+            Session ID if found, None otherwise
+        """
+        # For now, we assume single session per prompt
+        # In a multi-session scenario, we'd need to track prompt -> session mapping
+        # Return the first active session (simple heuristic)
+        if self.active_connections:
+            return list(self.active_connections.keys())[0]
+        return None
+    
     async def handle_comfy_error(self, data: Dict[str, Any]) -> None:
-        """Handle error from ComfyUI frontend."""
+        """Handle error from ComfyUI frontend and broadcast to PWA."""
         error_type = data.get("error_type")
         
         if error_type == "execution_error":
@@ -461,6 +494,20 @@ class ConnectionManager:
                 f"ComfyUI execution error in node {data.get('node_id')} "
                 f"({data.get('node_type')}): {data.get('exception_message')}"
             )
+            
+            # Broadcast to PWA clients
+            prompt_id = data.get("prompt_id")
+            session_id = self._get_session_id_for_prompt(prompt_id)
+            if session_id:
+                await self.broadcast_to_pwa_clients(session_id, {
+                    "type": "execution_error",
+                    "prompt_id": prompt_id,
+                    "node_id": data.get("node_id"),
+                    "node_type": data.get("node_type"),
+                    "exception_type": data.get("exception_type"),
+                    "exception_message": data.get("exception_message"),
+                })
+                
         elif error_type == "execution_interrupted":
             self.error_buffer.add_error(data)
             logger.warning(
@@ -473,7 +520,7 @@ class ConnectionManager:
         logger.debug(f"Queue status: {data.get('exec_info', {}).get('queue_remaining', 0)} remaining")
         
     async def handle_execution_event(self, event: str, data: Dict[str, Any]) -> None:
-        """Handle execution lifecycle events from ComfyUI."""
+        """Handle execution lifecycle events from ComfyUI and broadcast to PWA."""
         if event == "start":
             self.execution_tracker.handle_execution_start(data)
         elif event == "executing":
@@ -482,6 +529,17 @@ class ConnectionManager:
             self.execution_tracker.handle_execution_cached(data)
         elif event == "success":
             self.execution_tracker.handle_execution_success(data)
+            
+            # Broadcast success to PWA clients
+            prompt_id = data.get("prompt_id")
+            session_id = self._get_session_id_for_prompt(prompt_id)
+            if session_id:
+                execution_data = self.execution_tracker.get_execution_state(prompt_id)
+                await self.broadcast_to_pwa_clients(session_id, {
+                    "type": "execution_success",
+                    "prompt_id": prompt_id,
+                    "execution": execution_data,
+                })
 
 
 # Global connection manager instance

@@ -388,6 +388,60 @@ export class ChatUI {
     }
 
     /**
+     * Add system message with Ren links (for PWA notifications)
+     * @param {Object} messageData - Message data containing content and renLinks
+     */
+    addSystemMessage(messageData) {
+        const { content, renLinks = [] } = messageData;
+        
+        // Create message element
+        const messageEl = document.createElement('div');
+        messageEl.className = 'fl-message system-notification';
+        
+        const contentEl = document.createElement('div');
+        contentEl.className = 'fl-message-content';
+        
+        // Add markdown content
+        const textEl = document.createElement('div');
+        textEl.className = 'system-notification-text';
+        textEl.innerHTML = this._renderMarkdown(content);
+        contentEl.appendChild(textEl);
+        
+        // Add Ren links if present
+        if (renLinks.length > 0) {
+            const linksContainer = document.createElement('div');
+            linksContainer.className = 'ren-links-container';
+            
+            renLinks.forEach(link => {
+                const linkEl = document.createElement('a');
+                linkEl.className = 'ren-link';
+                linkEl.href = '#';
+                linkEl.dataset.protocol = 'message';
+                linkEl.dataset.text = link.action;
+                linkEl.textContent = link.text;
+                linksContainer.appendChild(linkEl);
+            });
+            
+            contentEl.appendChild(linksContainer);
+        }
+        
+        messageEl.appendChild(contentEl);
+        this.messagesContainer.appendChild(messageEl);
+        this._scrollToBottom();
+    }
+
+    /**
+     * Simple markdown renderer for system messages
+     * @private
+     */
+    _renderMarkdown(text) {
+        return text
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/\n/g, '<br>');
+    }
+
+    /**
      * Start a new tool in the breadcrumb chain
      * @param {string} toolName - Name of the tool being executed
      * @param {string} icon - Icon for the tool
