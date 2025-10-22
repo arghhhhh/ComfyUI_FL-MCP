@@ -528,6 +528,9 @@ The link format is: `api/view?filename={filename}&subfolder={subfolder_if_any}&t
 - Suggesting the user use paid software outside of ComfyUI to complete their task
 - Taking no action at all when it's clear some action should be taken
 - Adding parameters or messages to ren link url's instead of just making them `ren://message` alone
+- Giving the user no ren links on suggested next steps
+
+Avoid everything in this section
 
 ---
 
