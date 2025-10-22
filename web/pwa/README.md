@@ -17,6 +17,55 @@ It's the same Ren assistant you know, optimized for mobile.
 
 ---
 
+## 🏗️ Architecture
+
+```mermaid
+graph LR
+    subgraph "Mobile Device"
+        PWA["📱 Ren Go PWA"]
+        SW["Service Worker"]
+    end
+    
+    subgraph "Backend Server"
+        WS["WebSocket Manager"]
+        REN["🌸 Ren Agent"]
+    end
+    
+    subgraph "Desktop ComfyUI"
+        UI["ComfyUI Frontend"]
+        TOOLS["FL_JS Tools"]
+    end
+    
+    PWA -->|"WebSocket (pwa)"| WS
+    UI -->|"WebSocket (frontend)"| WS
+    WS --> REN
+    REN -->|"Tool Requests"| TOOLS
+    TOOLS -->|"Results"| REN
+    REN -->|"Broadcast"| WS
+    WS -->|"Events"| PWA
+    WS -->|"Events"| UI
+    
+    PWA -.->|"Offline Cache"| SW
+    
+    style PWA fill:#805ad5,stroke:#6b46c1,color:#fff
+    style REN fill:#38b2ac,stroke:#319795,color:#fff
+    style WS fill:#3182ce,stroke:#2c5282,color:#fff
+    style TOOLS fill:#ed8936,stroke:#c05621,color:#fff
+    style UI fill:#48bb78,stroke:#38a169,color:#fff
+    style SW fill:#718096,stroke:#4a5568,color:#fff
+```
+
+**How It Works:**
+
+- PWA and Desktop connect to same session via WebSocket
+- Ren processes messages from both clients
+- Tool execution happens on Desktop ComfyUI
+- Results broadcast to all connected clients (PWA + Desktop)
+- Service Worker enables offline functionality
+- Notifications sent when PWA is backgrounded
+
+---
+
 ## 🚀 Quick Start
 
 ### Prerequisites

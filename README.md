@@ -414,63 +414,19 @@ FL_JS/
 ├── README.md               # This file
 │
 ├── backend/                # 🐍 Python FastAPI server
-│   ├── server.py          # Main application entry
-│   ├── server_runner.py   # Auto-start subprocess manager
-│   ├── websocket.py       # WebSocket connection handling
-│   ├── manager.py         # Session & execution tracking
-│   ├── agent.py           # Ren AI agent (PydanticAI)
-│   ├── mcp_server.py      # Tool definitions (45+ tools)
-│   ├── model_defaults.py  # Provider-specific settings
-│   ├── config.py          # Configuration management
-│   ├── models.py          # Pydantic data models
-│   ├── comfy_tools.py     # ComfyUI filesystem access
-│   ├── comfy_manager.py   # Manager API client
-│   ├── node_library.py    # Node discovery client
-│   ├── sysinfo.py         # System information detection
-│   ├── calc.py            # Math expression calculator
-│   └── logs/              # Server logs (auto-generated)
-│
 ├── web/                    # 🌐 JavaScript frontend
 │   ├── js/                # Extension code
-│   │   ├── extension.js   # ComfyUI extension entry
-│   │   ├── session_manager.js  # Session handling
-│   │   ├── ws_client.js        # WebSocket client
-│   │   ├── chat_ui.js          # Chat interface
-│   │   ├── tool_executor.js    # Tool execution
-│   │   ├── tool_activity.js    # Tool visualization
-│   │   ├── query_executor.js   # Query DSL
-│   │   ├── fl_api.js           # FL_JS wrapper
-│   │   ├── diagram_generator.js # Mermaid diagrams
-│   │   ├── style.css           # Styling
 │   │   └── _components/        # Reusable UI components
-│   │
 │   └── pwa/               # 📱 Progressive Web App (Ren Go)
-│       ├── index.html     # PWA entry point
-│       ├── app.js         # Session picker & chat
-│       ├── styles.css     # Mobile-optimized styles
-│       ├── service-worker.js   # Offline support
-│       ├── manifest.json       # PWA metadata
-│       ├── README.md           # Setup guide
 │       └── icons/              # App icons
-│
 ├── agents/                 # 🤖 AI agent configuration
 │   └── agent.md           # Ren's system prompt
-│
 ├── legacy/                 # 📦 Original FL_JS code
-│   ├── FL_JS.py           # Original ComfyUI node
-│   ├── fl_js.js           # Core workflow functions
-│   └── NodePackLoader_SideBar.js  # Reference implementation
-│
 ├── tests/                  # 🧪 Test suites
 │   ├── backend/           # Backend unit tests
 │   ├── frontend/          # Frontend tests
 │   └── integration/       # End-to-end tests
-│
 └── notes/                  # 📝 Documentation & plans
-    ├── implementation/    # Implementation guides
-    ├── pwa/              # PWA development docs
-    ├── fill_merge/       # Provider abstraction merge
-    └── readme_update/    # This proposal
 ```
 
 **Key Folders Explained:**
@@ -708,11 +664,10 @@ See `notes/implementation/progress.md` for current status. Highlights:
 - 🚧 **Phase 5**: Polish & testing (IN PROGRESS)
 
 ### Future Features
-- 📋 Workflow templates library
 - 📋 Execution monitoring & feedback loop
-- 📋 Plugin system for custom tools
+- 📋 A2A Capabilities
 - 📋 Workflow version control
-- 📋 Collaborative editing
+- 📋 Collaborative editing and workflow management orchestration
 
 ---
 
