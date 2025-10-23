@@ -1052,6 +1052,6 @@ if __name__ == "__main__":
         "backend.server:app",
         host=settings.ws_host,
         port=settings.ws_port,
-        reload=True,
+        reload=False,
         log_level=settings.log_level.lower(),
     )
