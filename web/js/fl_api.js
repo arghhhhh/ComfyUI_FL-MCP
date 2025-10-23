@@ -314,15 +314,16 @@ export class FL_API {
      */
     fitView(nodeIds = null) {
         try {
+            const canvas = app.canvas;
             let nodes;
             
             if (nodeIds === null) {
                 // Use currently selected nodes
-                nodes = Object.values(app.canvas.selected_nodes || {});
+                nodes = Object.values(canvas.selected_nodes || {});
                 
                 if (nodes.length === 0) {
                     console.warn("[FL_API] No nodes selected, fitting all nodes");
-                    nodes = undefined;  // undefined = fit all
+                    nodes = app.graph._nodes;  // Use all nodes
                 }
             } else if (Array.isArray(nodeIds) && nodeIds.length > 0) {
                 // Find specified nodes
@@ -334,19 +335,51 @@ export class FL_API {
                     throw new Error(`None of the specified node IDs found: ${nodeIds}`);
                 }
             } else {
-                // Empty array or undefined = fit all nodes
-                nodes = undefined;
+                // Empty array = fit all nodes
+                nodes = app.graph._nodes;
             }
             
-            // Call LiteGraph fitNodes
-            app.canvas.fitNodes(nodes);
+            // FIT NODES USING CORRECT API
+            if (nodes.length === 1) {
+                // Single node: just center on it
+                canvas.centerOnNode(nodes[0]);
+            } else if (nodes.length > 1) {
+                // Multiple nodes: calculate bounding box and fit to view
+                let minX = Infinity, minY = Infinity;
+                let maxX = -Infinity, maxY = -Infinity;
+                
+                for (const node of nodes) {
+                    minX = Math.min(minX, node.pos[0]);
+                    minY = Math.min(minY, node.pos[1]);
+                    maxX = Math.max(maxX, node.pos[0] + node.size[0]);
+                    maxY = Math.max(maxY, node.pos[1] + node.size[1]);
+                }
+                
+                const centerX = (minX + maxX) / 2;
+                const centerY = (minY + maxY) / 2;
+                const width = maxX - minX;
+                const height = maxY - minY;
+                
+                // Calculate zoom to fit with 10% padding
+                const zoomX = canvas.canvas.width / width - 0.1;
+                const zoomY = canvas.canvas.height / height - 0.1;
+                const targetZoom = Math.min(zoomX, zoomY, 1.0);  // Don't zoom in past 100%
+                
+                // Apply viewport transform
+                canvas.ds.offset[0] = -centerX + canvas.canvas.width / 2 / targetZoom;
+                canvas.ds.offset[1] = -centerY + canvas.canvas.height / 2 / targetZoom;
+                canvas.ds.scale = targetZoom;
+            }
             
-            const count = nodes ? nodes.length : app.graph._nodes.length;
+            // Mark canvas for redraw
+            canvas.setDirty(true, true);
+            
+            const count = nodes.length;
             console.log(`[FL_API] Fit view to ${count} node(s)`);
             
             return { 
                 fitted_count: count,
-                node_ids: nodes ? nodes.map(n => n.id) : app.graph._nodes.map(n => n.id)
+                node_ids: nodes.map(n => n.id)
             };
         } catch (error) {
             console.error("[FL_API] fitView error:", error);
@@ -1155,7 +1188,6 @@ export class FL_API {
      * @param {number|string|object} targetNodeId - Node to position
      * @param {number|string|object} anchorNodeId - Reference node
      * @param {number} margin - Margin between nodes
-     * @returns {object} Updated position
      */
     positionBottom(targetNodeId, anchorNodeId, margin = 64) {
         try {

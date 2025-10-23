@@ -77,6 +77,18 @@ class NodeMapping:
     node_pack_name: str
 
 
+@dataclass
+class ModelInfo:
+    """Information about an installed model file."""
+    name: str                    # Filename without path
+    path: str                    # Relative path from ComfyUI root
+    folder_type: str             # checkpoints, loras, vae, etc.
+    size: int                    # File size in bytes
+    extension: str               # .safetensors, .ckpt, .pt, etc.
+    modified_time: float         # Unix timestamp
+    size_mb: float               # Formatted size in MB
+
+
 # ============================================================================
 # Cache
 # ============================================================================
@@ -456,6 +468,103 @@ class ComfyManagerClient:
                 "updates_available": False,
                 "message": "No updates available"
             }
+    
+    async def search_models(
+        self,
+        query: Optional[str] = None,
+        folder_type: Optional[str] = None,
+        extension_filter: Optional[str] = None,
+        max_results: int = 50
+    ) -> List[ModelInfo]:
+        """Search for installed models by name and type.
+        
+        This is a local filesystem search, not a Manager API call.
+        Uses ComfyUITools to list and filter model files.
+        
+        Args:
+            query: Text search in filename (case-insensitive)
+            folder_type: Filter by folder (checkpoints, loras, vae, etc.)
+            extension_filter: Filter by extension (.safetensors, .ckpt, etc.)
+            max_results: Maximum results to return
+            
+        Returns:
+            List of ModelInfo objects matching criteria
+        """
+        from comfy_tools import get_comfy_tools, ComfyFolderType
+        
+        tools = get_comfy_tools()
+        results = []
+        
+        # Determine which folders to search
+        if folder_type:
+            # Search specific folder type
+            try:
+                folder_enum = ComfyFolderType(folder_type)
+                folders_to_search = [folder_enum]
+            except ValueError:
+                logger.error(f"[Manager] Invalid folder_type: {folder_type}")
+                return []
+        else:
+            # Search all model-related folders
+            folders_to_search = [
+                ComfyFolderType.CHECKPOINTS,
+                ComfyFolderType.LORAS,
+                ComfyFolderType.VAE,
+                ComfyFolderType.CONTROLNET,
+                ComfyFolderType.UPSCALE_MODELS,
+                ComfyFolderType.EMBEDDINGS,
+            ]
+        
+        # Search each folder
+        for folder in folders_to_search:
+            try:
+                # Get all files in folder
+                files = tools.list_folders(folder)
+                
+                # Filter files only (skip directories)
+                for file_info in files:
+                    if file_info.is_directory:
+                        continue
+                    
+                    # Apply query filter (case-insensitive filename search)
+                    if query and query.lower() not in file_info.name.lower():
+                        continue
+                    
+                    # Apply extension filter
+                    if extension_filter:
+                        if not file_info.extension:
+                            continue
+                        # Normalize extension (add dot if missing)
+                        ext_filter = extension_filter if extension_filter.startswith('.') else f'.{extension_filter}'
+                        if file_info.extension.lower() != ext_filter.lower():
+                            continue
+                    
+                    # Convert to ModelInfo
+                    size_mb = file_info.size / (1024 * 1024) if file_info.size else 0.0
+                    
+                    model_info = ModelInfo(
+                        name=file_info.name,
+                        path=file_info.path,
+                        folder_type=folder.value,
+                        size=file_info.size or 0,
+                        extension=file_info.extension or '',
+                        modified_time=file_info.modified_time or 0.0,
+                        size_mb=round(size_mb, 2)
+                    )
+                    
+                    results.append(model_info)
+                    
+                    # Check max results
+                    if len(results) >= max_results:
+                        logger.info(f"[Manager] Model search truncated at {max_results} results")
+                        return results
+            
+            except Exception as e:
+                logger.warning(f"[Manager] Error searching folder {folder}: {e}")
+                continue
+        
+        logger.info(f"[Manager] Model search found {len(results)} models")
+        return results
 
 
 # ============================================================================

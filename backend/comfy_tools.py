@@ -7,8 +7,9 @@ for agent-based analysis and discovery.
 import os
 import re
 import logging
+import httpx
 from pathlib import Path
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 from dataclasses import dataclass
 from enum import Enum
 
@@ -69,9 +70,15 @@ class ComfyUISecurityError(ComfyUIError):
 class ComfyUITools:
     """Core ComfyUI filesystem utilities."""
     
-    def __init__(self, comfyui_root: Optional[str] = None):
-        """Initialize ComfyUI tools with auto-detection."""
+    def __init__(self, comfyui_root: Optional[str] = None, comfy_url: str = "http://127.0.0.1:8188"):
+        """Initialize ComfyUI tools with auto-detection.
+        
+        Args:
+            comfyui_root: Path to ComfyUI installation (auto-detected if None)
+            comfy_url: URL of ComfyUI server (default: http://127.0.0.1:8188)
+        """
         self.comfyui_root = Path(comfyui_root) if comfyui_root else self._find_comfyui_root()
+        self.comfy_url = comfy_url
         self._validate_comfyui_installation()
         
         # Define folder mappings
@@ -171,6 +178,110 @@ class ComfyUITools:
             
         except Exception as e:
             raise ComfyUISecurityError(f"Invalid path: {path} - {e}")
+    
+    async def fetch_history(self, prompt_id: Optional[str] = None, max_items: int = 10) -> Dict[str, Any]:
+        """Fetch execution history from ComfyUI.
+        
+        Args:
+            prompt_id: Optional specific prompt ID to fetch. If None, fetches recent history.
+            max_items: Maximum number of history items to fetch (default: 10)
+            
+        Returns:
+            If prompt_id is provided: Single history entry dict or None if not found
+            If prompt_id is None: Dict mapping prompt_id -> history entry
+            
+        Raises:
+            ComfyUIError: If history fetch fails
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.comfy_url}/history",
+                    params={"max_items": max_items},
+                    timeout=10.0
+                )
+                response.raise_for_status()
+                
+                history = response.json()
+                
+                if prompt_id:
+                    return history.get(prompt_id)
+                else:
+                    return history
+                    
+        except httpx.TimeoutException:
+            raise ComfyUIError(
+                f"ComfyUI server timeout. Is ComfyUI running at {self.comfy_url}?"
+            )
+        except httpx.RequestError as e:
+            raise ComfyUIError(
+                f"Failed to connect to ComfyUI at {self.comfy_url}: {e}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch history: {e}")
+            raise ComfyUIError(f"Failed to fetch history: {e}")
+    
+    async def get_errors_for_run(self, prompt_id: str) -> Dict[str, Any]:
+        """Get all errors for a specific workflow run from ComfyUI history.
+        
+        Args:
+            prompt_id: The prompt ID to get errors for
+            
+        Returns:
+            Dictionary containing error details:
+            {
+                "prompt_id": str,
+                "status": "success" | "error" | "unknown",
+                "errors": List[Dict],  # Parsed error details
+                "count": int
+            }
+        """
+        history_entry = await self.fetch_history(prompt_id)
+        
+        if not history_entry:
+            return {
+                "prompt_id": prompt_id,
+                "status": "unknown",
+                "errors": [],
+                "count": 0,
+                "message": "History not found - workflow may still be running or prompt_id is invalid"
+            }
+        
+        status = history_entry.get("status", {})
+        status_str = status.get("status_str", "unknown")
+        
+        if status_str != "error":
+            return {
+                "prompt_id": prompt_id,
+                "status": status_str,
+                "errors": [],
+                "count": 0
+            }
+        
+        # Extract error details from messages
+        errors = []
+        messages = status.get("messages", [])
+        
+        for msg_type, msg_data in messages:
+            if msg_type == "execution_error":
+                error = {
+                    "node_id": msg_data.get("node_id"),
+                    "node_type": msg_data.get("node_type"),
+                    "exception_type": msg_data.get("exception_type"),
+                    "exception_message": msg_data.get("exception_message"),
+                    "traceback": msg_data.get("traceback", []),
+                    "executed_nodes": msg_data.get("executed", []),
+                    "current_inputs": msg_data.get("current_inputs", {}),
+                    "timestamp": msg_data.get("timestamp")
+                }
+                errors.append(error)
+        
+        return {
+            "prompt_id": prompt_id,
+            "status": "error",
+            "errors": errors,
+            "count": len(errors)
+        }
     
     def list_folders(self, folder_type: Union[str, ComfyFolderType]) -> List[ComfyFileInfo]:
         """List contents of a ComfyUI directory by type."""

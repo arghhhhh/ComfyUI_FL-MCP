@@ -692,6 +692,29 @@ class ManagerGetNodeMappingsRequest(BaseModel):
 class ManagerCheckUpdatesRequest(BaseModel):
     """Check for available updates to installed node packs."""
     mode: Literal["local", "remote"] = Field("remote", description="Check mode")
+
+
+class ManagerSearchModelsRequest(BaseModel):
+    """Search for installed models in ComfyUI."""
+    query: Optional[str] = Field(
+        None, 
+        description="Search query for model filename (case-insensitive)"
+    )
+    folder_type: Optional[str] = Field(
+        None, 
+        description="Filter by folder type (checkpoints, loras, vae, controlnet, upscale_models, embeddings)"
+    )
+    extension_filter: Optional[str] = Field(
+        None, 
+        description="Filter by file extension (.safetensors, .ckpt, .pt, .pth, .bin)"
+    )
+    max_results: int = Field(
+        50, 
+        ge=1, 
+        le=200, 
+        description="Maximum results to return (1-200)"
+    )
+
     
 # PNG Workflow Extraction
 class ExtractWorkflowFromImageRequest(BaseModel):
@@ -1711,14 +1734,6 @@ async def manager_search_nodes(
     - "What can I update?" → updates_available=True
     - "Find packs by author" → query="author_name"
     
-    FILTERS:
-    - query: Text search across name, description, author
-    - category: Filter by pack category
-    - node_filter: Regex pattern to match node class names (RECOMMENDED for specific nodes)
-    - installed_only: Only show installed packs
-    - updates_available: Only show packs with updates
-    - mode: "cache" (fast), "remote" (fresh), "local" (filesystem)
-    
     NODE FILTER EXAMPLES:
     - "KSampler" → exact match
     - "FL_.*" → all FL nodes
@@ -1733,7 +1748,7 @@ async def manager_search_nodes(
     - files (download URLs)
     - matched_nodes (if node_filter used) - list of node class names that matched
     
-    NOTE: If Manager not installed, returns error with installation instructions.
+    NOTE: There is no install tool, so instruct the user how to install the nodepack with manager
     """
     await _report_tool_activity(ctx, "manager_search_nodes")
     
@@ -1925,6 +1940,111 @@ async def manager_check_updates(
     except Exception as e:
         logger.error(f"[Manager] Unexpected error: {e}")
         return {"error": str(e), "updates_available": False}
+
+
+@mcp.tool()
+async def manager_search_models(
+    request: ManagerSearchModelsRequest,
+    ctx: Context
+) -> Dict[str, Any]:
+    """Search for installed models in ComfyUI by name and type.
+    
+    This tool searches the local filesystem for model files (checkpoints, LoRAs, VAEs, etc.)
+    installed in your ComfyUI models directory. Unlike manager_search_nodes which searches
+    for installable node packs, this searches for already-installed model files.
+    
+    WHEN TO USE:
+    - "What checkpoints do I have installed?" → folder_type="checkpoints"
+    - "Find LoRAs with 'anime' in the name" → query="anime", folder_type="loras"
+    - "List all safetensors models" → extension_filter=".safetensors"
+    - "What VAE models are available?" → folder_type="vae"
+    - "Find controlnet models" → folder_type="controlnet"
+    - "Show me upscale models" → folder_type="upscale_models"
+    
+    FOLDER TYPES:
+    - "checkpoints" - Stable Diffusion checkpoints (base models)
+    - "loras" - LoRA adaptation files
+    - "vae" - VAE (Variational AutoEncoder) models
+    - "controlnet" - ControlNet models
+    - "upscale_models" - Upscaling models (ESRGAN, RealESRGAN, etc.)
+    - "embeddings" - Textual inversion embeddings
+    
+    COMMON EXTENSIONS:
+    - .safetensors - Modern safe format (recommended)
+    - .ckpt - Legacy checkpoint format
+    - .pt / .pth - PyTorch formats
+    - .bin - Binary format
+    
+    RETURNS:
+    Array of model objects with:
+    - name: Filename
+    - path: Relative path from ComfyUI root
+    - folder_type: Which folder it's in
+    - size: File size in bytes
+    - size_mb: Human-readable size in MB
+    - extension: File extension
+    - modified_time: Last modified timestamp
+    
+    EXAMPLES:
+    - Find all checkpoints: {"folder_type": "checkpoints"}
+    - Find anime LoRAs: {"query": "anime", "folder_type": "loras"}
+    - Find safetensors only: {"extension_filter": ".safetensors"}
+    - Search all models: {"query": "realistic"}
+    
+    NOTE: This searches LOCAL files only. To install new models, use ComfyUI Manager UI
+    or download them manually to the appropriate models folder.
+    """
+    await _report_tool_activity(ctx, "manager_search_models")
+    
+    try:
+        manager_client = ctx.request_context.lifespan_context.get('manager_client')
+        if not manager_client:
+            return {
+                "error": "ComfyUI Manager client not initialized",
+                "results": [],
+                "count": 0
+            }
+        
+        # Call search_models method
+        results = await manager_client.search_models(
+            query=request.query,
+            folder_type=request.folder_type,
+            extension_filter=request.extension_filter,
+            max_results=request.max_results
+        )
+        
+        # Convert dataclass to dict
+        results_dict = [
+            {
+                "name": model.name,
+                "path": model.path,
+                "folder_type": model.folder_type,
+                "size": model.size,
+                "size_mb": model.size_mb,
+                "extension": model.extension,
+                "modified_time": model.modified_time
+            }
+            for model in results
+        ]
+        
+        return {
+            "results": results_dict,
+            "count": len(results_dict),
+            "truncated": len(results_dict) >= request.max_results,
+            "search_params": {
+                "query": request.query,
+                "folder_type": request.folder_type,
+                "extension_filter": request.extension_filter
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"[Manager] Model search error: {e}")
+        return {
+            "error": str(e),
+            "results": [],
+            "count": 0
+        }
 
 # ============================================================================
 # ERROR FEEDBACK & QUEUE STATUS TOOLS
