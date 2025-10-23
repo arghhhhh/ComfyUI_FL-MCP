@@ -1,10 +1,10 @@
 {
-  "current_mode": "research",
+  "current_mode": "implementation",
   "project": "fl_js",
-  "task": "investigation complete",
+  "task": "strip prompt key from history to reduce tokens",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
-  "focus": "understanding actual tool implementation patterns",
+  "focus": "modify fetch_history in comfy_tools.py",
   "plans_created": "6 detailed implementation plans + summary",
   "next_step": "test with real workflows",
   "ui_integration": "app.extensionManager.registerSidebarTab",
@@ -265,7 +265,7 @@
   "tools_updated": 16,
   "file_modified": "backend/comfy_manager.py",
   "lines_changed": "~15 lines in get_node_mappings method",
-  "issue": "PWA trying to load /pwa/js/* but modules are at /web/js/*",
+  "issue": "history returns large prompt data we don't need",
   "branch_comparison_complete": true,
   "error_type": "404 Not Found from Gemini API",
   "workaround": "use openrouter provider",
@@ -325,5 +325,7 @@
   "data_source": "model-list.json from channel URL",
   "search_method": "fetch full list and filter client-side",
   "endpoint_status": "500_error",
-  "estimated_loc": "~150 lines total"
+  "estimated_loc": "~150 lines total",
+  "issue_found": "naming mismatch with implementation",
+  "approach": "use history endpoint for all error/status queries"
 }

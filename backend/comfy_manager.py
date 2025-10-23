@@ -140,6 +140,20 @@ class ManagerCache:
 # Core Client
 # ============================================================================
 
+@dataclass
+class ExternalModelInfo:
+    """Information about an external (uninstalled) model."""
+    name: str
+    filename: str
+    type: str
+    base: str
+    description: str
+    reference: str
+    save_path: str
+    size: str
+    url: str
+    installed: bool  # Converted from string
+
 class ComfyManagerClient:
     """Client for ComfyUI Manager REST API."""
     
@@ -469,103 +483,123 @@ class ComfyManagerClient:
                 "message": "No updates available"
             }
     
-    async def search_models(
+    async def search_external_models(
         self,
         query: Optional[str] = None,
-        folder_type: Optional[str] = None,
-        extension_filter: Optional[str] = None,
-        max_results: int = 50
-    ) -> List[ModelInfo]:
-        """Search for installed models by name and type.
-        
-        This is a local filesystem search, not a Manager API call.
-        Uses ComfyUITools to list and filter model files.
+        base_filter: Optional[str] = None,
+        type_filter: Optional[str] = None,
+        name_filter: Optional[str] = None,
+        description_filter: Optional[str] = None,
+        reference_filter: Optional[str] = None,
+        uninstalled_only: bool = True,
+        installed_only: bool = False,
+        max_results: int = 10,
+        mode: Literal["cache", "remote"] = "cache"
+    ) -> List[ExternalModelInfo]:
+        """Search for external models in Manager registry.
         
         Args:
-            query: Text search in filename (case-insensitive)
-            folder_type: Filter by folder (checkpoints, loras, vae, etc.)
-            extension_filter: Filter by extension (.safetensors, .ckpt, etc.)
-            max_results: Maximum results to return
+            query: Regex search across name, description, filename
+            base_filter: Regex filter for base field
+            type_filter: Regex filter for type field  
+            name_filter: Regex filter for name field
+            description_filter: Regex filter for description
+            reference_filter: Regex filter for reference URL
+            uninstalled_only: Only show uninstalled (default: True)
+            installed_only: Only show installed (default: False)
+            max_results: Maximum results (default: 10)
+            mode: Data source (cache or remote)
             
         Returns:
-            List of ModelInfo objects matching criteria
+            List of ExternalModelInfo matching criteria
         """
-        from comfy_tools import get_comfy_tools, ComfyFolderType
+        await self._ensure_installed()
         
-        tools = get_comfy_tools()
+        # Check cache
+        cache_key = f"external_models_{mode}"
+        cached = await self.cache.get(cache_key)
+        
+        if cached is None:
+            # Fetch from API
+            data = await self._get("/externalmodel/getlist", params={"mode": mode})
+            
+            # Parse models
+            all_models = []
+            raw_models = data.get("models", [])
+            
+            for model in raw_models:
+                all_models.append(ExternalModelInfo(
+                    name=model.get("name", ""),
+                    filename=model.get("filename", ""),
+                    type=model.get("type", ""),
+                    base=model.get("base", ""),
+                    description=model.get("description", ""),
+                    reference=model.get("reference", ""),
+                    save_path=model.get("save_path", ""),
+                    size=model.get("size", ""),
+                    url=model.get("url", ""),
+                    installed=model.get("installed", "False") == "True"
+                ))
+            
+            await self.cache.set(cache_key, all_models)
+            logger.info(f"[Manager] Fetched {len(all_models)} external models")
+        else:
+            all_models = cached
+        
+        # Apply filters
+        import re
         results = []
         
-        # Determine which folders to search
-        if folder_type:
-            # Search specific folder type
-            try:
-                folder_enum = ComfyFolderType(folder_type)
-                folders_to_search = [folder_enum]
-            except ValueError:
-                logger.error(f"[Manager] Invalid folder_type: {folder_type}")
-                return []
-        else:
-            # Search all model-related folders
-            folders_to_search = [
-                ComfyFolderType.CHECKPOINTS,
-                ComfyFolderType.LORAS,
-                ComfyFolderType.VAE,
-                ComfyFolderType.CONTROLNET,
-                ComfyFolderType.UPSCALE_MODELS,
-                ComfyFolderType.EMBEDDINGS,
-            ]
-        
-        # Search each folder
-        for folder in folders_to_search:
-            try:
-                # Get all files in folder
-                files = tools.list_folders(folder)
-                
-                # Filter files only (skip directories)
-                for file_info in files:
-                    if file_info.is_directory:
-                        continue
-                    
-                    # Apply query filter (case-insensitive filename search)
-                    if query and query.lower() not in file_info.name.lower():
-                        continue
-                    
-                    # Apply extension filter
-                    if extension_filter:
-                        if not file_info.extension:
-                            continue
-                        # Normalize extension (add dot if missing)
-                        ext_filter = extension_filter if extension_filter.startswith('.') else f'.{extension_filter}'
-                        if file_info.extension.lower() != ext_filter.lower():
-                            continue
-                    
-                    # Convert to ModelInfo
-                    size_mb = file_info.size / (1024 * 1024) if file_info.size else 0.0
-                    
-                    model_info = ModelInfo(
-                        name=file_info.name,
-                        path=file_info.path,
-                        folder_type=folder.value,
-                        size=file_info.size or 0,
-                        extension=file_info.extension or '',
-                        modified_time=file_info.modified_time or 0.0,
-                        size_mb=round(size_mb, 2)
-                    )
-                    
-                    results.append(model_info)
-                    
-                    # Check max results
-                    if len(results) >= max_results:
-                        logger.info(f"[Manager] Model search truncated at {max_results} results")
-                        return results
-            
-            except Exception as e:
-                logger.warning(f"[Manager] Error searching folder {folder}: {e}")
+        for model in all_models:
+            # Installation status filter
+            if uninstalled_only and model.installed:
                 continue
+            if installed_only and not model.installed:
+                continue
+            
+            # General query (across name, description, filename)
+            if query:
+                try:
+                    pattern = re.compile(query, re.IGNORECASE)
+                    if not (pattern.search(model.name) or 
+                            pattern.search(model.description) or 
+                            pattern.search(model.filename)):
+                        continue
+                except re.error:
+                    # Invalid regex, skip this filter
+                    pass
+            
+            # Field-specific filters
+            filter_map = {
+                'base_filter': model.base,
+                'type_filter': model.type,
+                'name_filter': model.name,
+                'description_filter': model.description,
+                'reference_filter': model.reference
+            }
+            
+            skip = False
+            for param_name, field_value in filter_map.items():
+                filter_value = locals().get(param_name)
+                if filter_value:
+                    try:
+                        if not re.search(filter_value, field_value, re.IGNORECASE):
+                            skip = True
+                            break
+                    except re.error:
+                        # Invalid regex, skip this filter
+                        pass
+            
+            if skip:
+                continue
+            
+            results.append(model)
+            
+            if len(results) >= max_results:
+                break
         
-        logger.info(f"[Manager] Model search found {len(results)} models")
+        logger.info(f"[Manager] External model search found {len(results)} models")
         return results
-
 
 # ============================================================================
 # Global Instance

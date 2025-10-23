@@ -581,14 +581,27 @@ class GetSystemInfoRequest(BaseModel):
     """Request for system information."""
     pass  # No parameters needed
 
-# Error Feedback
-class GetRecentErrorsRequest(BaseModel):
-    """Request to get recent execution errors."""
-    limit: int = Field(10, description="Number of recent errors to retrieve (default: 10, max: 100)")
+# # Error Feedback
+# class GetRecentErrorsRequest(BaseModel):
+#     """Request to get recent execution errors."""
+#     limit: int = Field(10, description="Number of recent errors to retrieve (default: 10, max: 100)")
 
-class GetErrorsForRunRequest(BaseModel):
-    """Request to get errors for a specific workflow run."""
-    prompt_id: str = Field(..., description="The prompt/run ID to get errors for")
+# class GetErrorsForRunRequest(BaseModel):
+#     """Request to get errors for a specific workflow run."""
+#     prompt_id: str = Field(..., description="The prompt/run ID to get errors for")
+
+class GetWorkflowHistoryRequest(BaseModel):
+    """Request for workflow history."""
+    prompt_id: Optional[str] = Field(
+        default=None,
+        description="Specific prompt ID to get history for. If None, returns recent history."
+    )
+    max_items: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum number of history items to return (1-100)"
+    )
 
 class GetQueueStatusDetailsRequest(BaseModel):
     """Request to get detailed queue status and active executions."""
@@ -694,27 +707,50 @@ class ManagerCheckUpdatesRequest(BaseModel):
     mode: Literal["local", "remote"] = Field("remote", description="Check mode")
 
 
-class ManagerSearchModelsRequest(BaseModel):
-    """Search for installed models in ComfyUI."""
+class ManagerSearchExternalModelsRequest(BaseModel):
+    """Search for uninstalled models in ComfyUI Manager registry."""
     query: Optional[str] = Field(
         None, 
-        description="Search query for model filename (case-insensitive)"
+        description="Regex search across name, description, filename"
     )
-    folder_type: Optional[str] = Field(
+    base_filter: Optional[str] = Field(
         None, 
-        description="Filter by folder type (checkpoints, loras, vae, controlnet, upscale_models, embeddings)"
+        description="Regex filter for base (e.g., 'FLUX', 'SDXL', 'SD1')"
     )
-    extension_filter: Optional[str] = Field(
+    type_filter: Optional[str] = Field(
         None, 
-        description="Filter by file extension (.safetensors, .ckpt, .pt, .pth, .bin)"
+        description="Regex filter for type (e.g., 'checkpoint', 'lora', 'upscale', 'TAESD')"
+    )
+    name_filter: Optional[str] = Field(
+        None, 
+        description="Regex filter for model name"
+    )
+    description_filter: Optional[str] = Field(
+        None, 
+        description="Regex filter for description text"
+    )
+    reference_filter: Optional[str] = Field(
+        None, 
+        description="Regex filter for reference URL"
+    )
+    uninstalled_only: bool = Field(
+        True, 
+        description="Only show uninstalled models (default: True)"
+    )
+    installed_only: bool = Field(
+        False, 
+        description="Only show installed models (default: False)"
     )
     max_results: int = Field(
-        50, 
+        10, 
         ge=1, 
-        le=200, 
-        description="Maximum results to return (1-200)"
+        le=100, 
+        description="Maximum results to return (1-100)"
     )
-
+    mode: Literal["cache", "remote"] = Field(
+        "cache", 
+        description="Data source mode"
+    )
     
 # PNG Workflow Extraction
 class ExtractWorkflowFromImageRequest(BaseModel):
@@ -1943,58 +1979,46 @@ async def manager_check_updates(
 
 
 @mcp.tool()
-async def manager_search_models(
-    request: ManagerSearchModelsRequest,
+async def manager_search_external_models(
+    request: ManagerSearchExternalModelsRequest,
     ctx: Context
 ) -> Dict[str, Any]:
-    """Search for installed models in ComfyUI by name and type.
+    """Search for uninstalled models available through ComfyUI Manager.
     
-    This tool searches the local filesystem for model files (checkpoints, LoRAs, VAEs, etc.)
-    installed in your ComfyUI models directory. Unlike manager_search_nodes which searches
-    for installable node packs, this searches for already-installed model files.
+    Use this tool to discover models that can be downloaded and installed.
+    Different from manager_search_models which searches INSTALLED local files.
     
     WHEN TO USE:
-    - "What checkpoints do I have installed?" → folder_type="checkpoints"
-    - "Find LoRAs with 'anime' in the name" → query="anime", folder_type="loras"
-    - "List all safetensors models" → extension_filter=".safetensors"
-    - "What VAE models are available?" → folder_type="vae"
-    - "Find controlnet models" → folder_type="controlnet"
-    - "Show me upscale models" → folder_type="upscale_models"
+    - "What FLUX models are available?" → base_filter="FLUX"
+    - "Find upscalers" → type_filter="upscale"
+    - "Search for anime models" → query="anime"
+    - "What models can I download?" → uninstalled_only=True
+    - "Find TAESD decoders" → type_filter="TAESD"
     
-    FOLDER TYPES:
-    - "checkpoints" - Stable Diffusion checkpoints (base models)
-    - "loras" - LoRA adaptation files
-    - "vae" - VAE (Variational AutoEncoder) models
-    - "controlnet" - ControlNet models
-    - "upscale_models" - Upscaling models (ESRGAN, RealESRGAN, etc.)
-    - "embeddings" - Textual inversion embeddings
-    
-    COMMON EXTENSIONS:
-    - .safetensors - Modern safe format (recommended)
-    - .ckpt - Legacy checkpoint format
-    - .pt / .pth - PyTorch formats
-    - .bin - Binary format
+    FILTER EXAMPLES:
+    - base_filter="FLUX|SDXL" → FLUX or SDXL models
+    - type_filter="checkpoint|lora" → Checkpoints or LoRAs
+    - query="4x" → Models with "4x" in name/description/filename
+    - description_filter="anime" → Models mentioning anime
     
     RETURNS:
-    Array of model objects with:
-    - name: Filename
-    - path: Relative path from ComfyUI root
-    - folder_type: Which folder it's in
-    - size: File size in bytes
-    - size_mb: Human-readable size in MB
-    - extension: File extension
-    - modified_time: Last modified timestamp
+    Array of external model objects with:
+    - name, filename, type, base
+    - description, reference (source URL)
+    - save_path (where it installs)
+    - size (human-readable)
+    - url (direct download link)
+    - installed (boolean status)
     
-    EXAMPLES:
-    - Find all checkpoints: {"folder_type": "checkpoints"}
-    - Find anime LoRAs: {"query": "anime", "folder_type": "loras"}
-    - Find safetensors only: {"extension_filter": ".safetensors"}
-    - Search all models: {"query": "realistic"}
+    NOTE: This tool is READ-ONLY. To install models, instruct user to:
+    1. Open ComfyUI Manager UI
+    2. Go to "Install Models" tab
+    3. Search for the model name
+    4. Click install
     
-    NOTE: This searches LOCAL files only. To install new models, use ComfyUI Manager UI
-    or download them manually to the appropriate models folder.
+    Or provide the direct download URL for manual installation.
     """
-    await _report_tool_activity(ctx, "manager_search_models")
+    await _report_tool_activity(ctx, "manager_search_external_models")
     
     try:
         manager_client = ctx.request_context.lifespan_context.get('manager_client')
@@ -2005,24 +2029,32 @@ async def manager_search_models(
                 "count": 0
             }
         
-        # Call search_models method
-        results = await manager_client.search_models(
+        results = await manager_client.search_external_models(
             query=request.query,
-            folder_type=request.folder_type,
-            extension_filter=request.extension_filter,
-            max_results=request.max_results
+            base_filter=request.base_filter,
+            type_filter=request.type_filter,
+            name_filter=request.name_filter,
+            description_filter=request.description_filter,
+            reference_filter=request.reference_filter,
+            uninstalled_only=request.uninstalled_only,
+            installed_only=request.installed_only,
+            max_results=request.max_results,
+            mode=request.mode
         )
         
         # Convert dataclass to dict
         results_dict = [
             {
                 "name": model.name,
-                "path": model.path,
-                "folder_type": model.folder_type,
+                "filename": model.filename,
+                "type": model.type,
+                "base": model.base,
+                "description": model.description,
+                "reference": model.reference,
+                "save_path": model.save_path,
                 "size": model.size,
-                "size_mb": model.size_mb,
-                "extension": model.extension,
-                "modified_time": model.modified_time
+                "url": model.url,
+                "installed": model.installed
             }
             for model in results
         ]
@@ -2030,59 +2062,183 @@ async def manager_search_models(
         return {
             "results": results_dict,
             "count": len(results_dict),
-            "truncated": len(results_dict) >= request.max_results,
-            "search_params": {
-                "query": request.query,
-                "folder_type": request.folder_type,
-                "extension_filter": request.extension_filter
-            }
+            "truncated": len(results_dict) >= request.max_results
         }
         
+    except ManagerNotInstalledError as e:
+        logger.warning(f"[Manager] Not installed: {e}")
+        return {"error": str(e), "results": [], "count": 0}
+    except ManagerAPIError as e:
+        logger.error(f"[Manager] API error: {e}")
+        return {"error": str(e), "results": [], "count": 0}
+    except ManagerConnectionError as e:
+        logger.error(f"[Manager] Connection error: {e}")
+        return {"error": str(e), "results": [], "count": 0}
     except Exception as e:
-        logger.error(f"[Manager] Model search error: {e}")
-        return {
-            "error": str(e),
-            "results": [],
-            "count": 0
-        }
+        logger.error(f"[Manager] Unexpected error: {e}")
+        return {"error": str(e), "results": [], "count": 0}
 
 # ============================================================================
 # ERROR FEEDBACK & QUEUE STATUS TOOLS
 # ============================================================================
 
 @mcp.tool()
-async def get_recent_errors(request: GetRecentErrorsRequest, ctx: Context) -> Dict[str, Any]:
-    """Get recent execution errors from ComfyUI.
+async def get_workflow_history(request: GetWorkflowHistoryRequest, ctx: Context) -> Dict[str, Any]:
+    """Get workflow execution history from ComfyUI.
     
-    Retrieves the N most recent errors that occurred during workflow execution.
-    Useful for debugging failed workflows and understanding error patterns.
+    Retrieves execution history including status, errors, and outputs for workflows.
+    Can fetch a specific workflow by prompt_id or recent history.
+    
+    For each workflow in history, you'll get:
+    - status: "success", "error", or "running"
+    - outputs: Generated images/files (if successful)
+    - errors: Full error details with traceback (if failed)
+    - prompt: The workflow that was executed
+    
+    Use this to:
+    - Check if a workflow succeeded or failed
+    - Get detailed error information for debugging
+    - Retrieve outputs from successful workflows
+    - Monitor recent workflow executions
+    
+    Returns:
+        If prompt_id provided:
+        {
+            "prompt_id": str,
+            "status": "success" | "error" | "unknown",
+            "completed": bool,
+            "outputs": {...},  # Only if successful
+            "errors": [...],   # Only if failed, with full traceback
+            "executed_nodes": [...],  # Nodes that ran successfully
+            "prompt": {...}    # The workflow definition
+        }
+        
+        If prompt_id not provided:
+        {
+            "history": {
+                "prompt_id_1": {...},
+                "prompt_id_2": {...},
+                ...
+            },
+            "count": int,
+            "total_items": int
+        }
     """
-    await _report_tool_activity(ctx, "get_recent_errors")
+    await _report_tool_activity(ctx, "get_workflow_history")
     
-    limit = min(request.limit, 100)  # Cap at buffer size
-    errors = manager.error_buffer.get_recent_errors(limit)
-    return {
-        "errors": errors,
-        "count": len(errors),
-        "total_in_buffer": manager.error_buffer.get_count()
-    }
-
-@mcp.tool()
-async def get_errors_for_run(request: GetErrorsForRunRequest, ctx: Context) -> Dict[str, Any]:
-    """Get all errors for a specific workflow run.
-    
-    Retrieves all errors that occurred during a specific workflow execution,
-    identified by its prompt_id. Use this to debug why a particular run failed.
-    """
-    await _report_tool_activity(ctx, "get_errors_for_run")
-    
-    errors = manager.error_buffer.get_errors_for_prompt(request.prompt_id)
-    return {
-        "prompt_id": request.prompt_id,
-        "errors": errors,
-        "count": len(errors)
-    }
-
+    try:
+        comfy_tools = get_comfy_tools()
+        
+        if request.prompt_id:
+            # Get specific workflow history
+            history_entry = await comfy_tools.fetch_history(
+                prompt_id=request.prompt_id
+            )
+            
+            if not history_entry:
+                return {
+                    "prompt_id": request.prompt_id,
+                    "status": "unknown",
+                    "completed": False,
+                    "message": "History not found - workflow may still be running or prompt_id is invalid"
+                }
+            
+            # Parse the history entry
+            status = history_entry.get("status", {})
+            status_str = status.get("status_str", "unknown")
+            completed = status.get("completed", False)
+            
+            result = {
+                "prompt_id": request.prompt_id,
+                "status": status_str,
+                "completed": completed,
+                "outputs": history_entry.get("outputs", {}),
+                "prompt": history_entry.get("prompt", [])
+            }
+            
+            # Add error details if failed
+            if status_str == "error":
+                errors = []
+                messages = status.get("messages", [])
+                
+                for msg_type, msg_data in messages:
+                    if msg_type == "execution_error":
+                        error = {
+                            "node_id": msg_data.get("node_id"),
+                            "node_type": msg_data.get("node_type"),
+                            "exception_type": msg_data.get("exception_type"),
+                            "exception_message": msg_data.get("exception_message"),
+                            "traceback": msg_data.get("traceback", []),
+                            "current_inputs": msg_data.get("current_inputs", {}),
+                            "timestamp": msg_data.get("timestamp")
+                        }
+                        errors.append(error)
+                
+                result["errors"] = errors
+                result["error_count"] = len(errors)
+                
+                # Add executed nodes (nodes that ran before failure)
+                if errors:
+                    result["executed_nodes"] = errors[0].get("executed", [])
+            
+            # Add execution messages for all statuses
+            result["messages"] = status.get("messages", [])
+            
+            return result
+            
+        else:
+            # Get recent history
+            history = await comfy_tools.fetch_history(max_items=request.max_items)
+            
+            # Parse each entry to add simplified status
+            parsed_history = {}
+            for prompt_id, entry in history.items():
+                status = entry.get("status", {})
+                status_str = status.get("status_str", "unknown")
+                
+                parsed_entry = {
+                    "status": status_str,
+                    "completed": status.get("completed", False),
+                    "has_outputs": bool(entry.get("outputs")),
+                    "has_errors": status_str == "error"
+                }
+                
+                # Add error summary if failed
+                if status_str == "error":
+                    messages = status.get("messages", [])
+                    for msg_type, msg_data in messages:
+                        if msg_type == "execution_error":
+                            parsed_entry["error_summary"] = {
+                                "node_id": msg_data.get("node_id"),
+                                "node_type": msg_data.get("node_type"),
+                                "exception_message": msg_data.get("exception_message")
+                            }
+                            break
+                
+                parsed_history[prompt_id] = parsed_entry
+            
+            return {
+                "history": parsed_history,
+                "count": len(parsed_history),
+                "total_items": len(history),
+                "message": f"Retrieved {len(parsed_history)} recent workflow executions"
+            }
+            
+    except ComfyUIError as e:
+        logger.error(f"ComfyUI error in get_workflow_history: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "prompt_id": request.prompt_id if request.prompt_id else None
+        }
+    except Exception as e:
+        logger.error(f"Unexpected error in get_workflow_history: {e}")
+        return {
+            "success": False,
+            "error": f"Unexpected error: {str(e)}",
+            "prompt_id": request.prompt_id if request.prompt_id else None
+        }
+        
 @mcp.tool()
 async def get_queue_status_details(request: GetQueueStatusDetailsRequest, ctx: Context) -> Dict[str, Any]:
     """Get current ComfyUI queue status and active executions.

@@ -204,6 +204,12 @@ class ComfyUITools:
                 
                 history = response.json()
                 
+                # Strip out "prompt" key to reduce token usage
+                # We only care about status, outputs, and errors
+                for prompt_id_key, entry in history.items():
+                    if "prompt" in entry:
+                        del entry["prompt"]
+                
                 if prompt_id:
                     return history.get(prompt_id)
                 else:
@@ -219,69 +225,7 @@ class ComfyUITools:
             )
         except Exception as e:
             logger.error(f"Failed to fetch history: {e}")
-            raise ComfyUIError(f"Failed to fetch history: {e}")
-    
-    async def get_errors_for_run(self, prompt_id: str) -> Dict[str, Any]:
-        """Get all errors for a specific workflow run from ComfyUI history.
-        
-        Args:
-            prompt_id: The prompt ID to get errors for
-            
-        Returns:
-            Dictionary containing error details:
-            {
-                "prompt_id": str,
-                "status": "success" | "error" | "unknown",
-                "errors": List[Dict],  # Parsed error details
-                "count": int
-            }
-        """
-        history_entry = await self.fetch_history(prompt_id)
-        
-        if not history_entry:
-            return {
-                "prompt_id": prompt_id,
-                "status": "unknown",
-                "errors": [],
-                "count": 0,
-                "message": "History not found - workflow may still be running or prompt_id is invalid"
-            }
-        
-        status = history_entry.get("status", {})
-        status_str = status.get("status_str", "unknown")
-        
-        if status_str != "error":
-            return {
-                "prompt_id": prompt_id,
-                "status": status_str,
-                "errors": [],
-                "count": 0
-            }
-        
-        # Extract error details from messages
-        errors = []
-        messages = status.get("messages", [])
-        
-        for msg_type, msg_data in messages:
-            if msg_type == "execution_error":
-                error = {
-                    "node_id": msg_data.get("node_id"),
-                    "node_type": msg_data.get("node_type"),
-                    "exception_type": msg_data.get("exception_type"),
-                    "exception_message": msg_data.get("exception_message"),
-                    "traceback": msg_data.get("traceback", []),
-                    "executed_nodes": msg_data.get("executed", []),
-                    "current_inputs": msg_data.get("current_inputs", {}),
-                    "timestamp": msg_data.get("timestamp")
-                }
-                errors.append(error)
-        
-        return {
-            "prompt_id": prompt_id,
-            "status": "error",
-            "errors": errors,
-            "count": len(errors)
-        }
+            raise ComfyUIError(f"Failed to fetch history: {e}")    
     
     def list_folders(self, folder_type: Union[str, ComfyFolderType]) -> List[ComfyFileInfo]:
         """List contents of a ComfyUI directory by type."""
