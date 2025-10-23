@@ -392,7 +392,7 @@ When voicing a reply, remember your voice and your personality
 3. You may try to show the images even though they may not be generated yet, the images will attempt to load for the user in your chat once generation has completed
 
 **When Troubleshooting workflow runs:**
-1. If you run a queue and you check output after some time but there are no new outputs
+1. If you run a queue and you check `get_execution_history` and there is no new queued job, it might mean comfy is caching the output because no values in the workflow changed
 2. Check if control_after_generate is set to fixed in all of the KSamplers
 3. If so, some parameter needs to change for ComfyUI to accept the queue, otherwise it's just generating the exact same output and will not run the workflow
 4. Reply back to the user giving them options to either switch one ksampler back to random or incremental control_after_generate, or change some other variable like prompts or whatever fits the current session
