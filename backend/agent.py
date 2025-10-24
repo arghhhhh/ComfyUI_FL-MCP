@@ -6,6 +6,7 @@ for the FL_JS agentic system.
 
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from contextvars import ContextVar
@@ -271,9 +272,10 @@ def create_agent(session_id: str) -> Agent:
     mcp_server_path = str(Path(__file__).parent / 'mcp_server.py')
 
     # Launch MCP server with environment
+    # Use sys.executable to ensure subprocess uses same Python as current process
     mcp_servers = [
         MCPServerStdio(
-            'python',
+            sys.executable,  # Use current Python interpreter (respects venv)
             [mcp_server_path],
             env=mcp_env  # Pass environment to subprocess
         )
