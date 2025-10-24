@@ -24,10 +24,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # === Backend Auto-Start ===
+    # === Backend Launch Configuration ===
+    backend_launch_mode: Literal["auto", "terminal", "subprocess", "manual"] = "auto"
     auto_start_backend: bool = True
-    auto_restart_backend: bool = True
-    log_backend_to_file: bool = True
+    auto_restart_backend: bool = True  # Only applies to subprocess mode
+    log_backend_to_file: bool = True   # Only applies to subprocess mode
 
     # LLM Provider Configuration
     llm_provider: Literal["openai", "anthropic", "gemini", "openrouter"] = "gemini"
