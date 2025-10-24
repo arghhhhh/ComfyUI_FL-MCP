@@ -18,7 +18,7 @@
 
 ### 📱 Ren Go - Mobile App
 - **Mobile access** - Control ComfyUI from your phone
-- **Session picker** - Connect to any active ComfyUI session
+- **Session picker** - Connect to any active ComfyUI session **ONLY IF OPEN ON YOUR COMPUTER**
 - **Smart notifications** - Get notified when workflows complete or fail
 - **Ren links** - One-tap actions like "Show me the output"
 - **Offline support** - App works offline, reconnects automatically
@@ -27,12 +27,12 @@
 📖 **[Complete Ren Go Setup Guide](web/pwa/README.md)**
 
 ### 🛠️ Comprehensive Tool Suite (45+ Tools)
-- **Node Management** - Create, find, remove, bypass, pin, and select nodes
+- **Node Management** - Create, find, remove, bypass, pin, and select nodes **NO SAVE ACCESS**
 - **Node Manipulation** - Get/set parameters, connect nodes intelligently
 - **Layout Control** - Auto-arrange workflows, position nodes relative to each other
 - **Workflow Execution** - Queue, cancel, batch processing, monitor status
 - **Advanced Queries** - Filter nodes, traverse connections, aggregate data
-- **ComfyUI Filesystem** - Browse custom nodes, models, search files securely
+- **ComfyUI Filesystem** - Browse custom nodes, models, search files securely **NO WRITE ACCES**
 - **Node Pack Discovery** - Search and discover custom node packs via Manager
 - **System Information** - OS, Python, and environment detection for help
 - **Canvas Control** - Focus on nodes, take screenshots for visual debugging

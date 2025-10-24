@@ -1,10 +1,10 @@
 {
-  "current_mode": "implementation",
+  "current_mode": "investigation",
   "project": "fl_js",
-  "task": "terminal launcher implementation complete",
+  "task": "deepest investigation complete - ready for implementation",
   "architecture": "FastAPI+WS backend with PydanticAI + FastMCP, JS chat sidebar client, realtime tool callbacks",
   "project_status": "new project inspired by legacy FL_JS/FL_WF_Agent",
-  "focus": "create terminal_launcher.py and update existing files",
+  "focus": "MCP tool error handling, reservation helper functions, graceful error returns with reservation data",
   "plans_created": "6 detailed implementation plans + summary",
   "next_step": "create testing guide for beta testers",
   "ui_integration": "app.extensionManager.registerSidebarTab",
@@ -63,7 +63,7 @@
   "notes_created": "notes/focus/zoom_research.md",
   "root_cause_hypothesis": "model name gemini-2.0-flash-exp may not be valid or available",
   "root_cause": "canvas.ds.scale direct assignment doesn't trigger zoom - need canvas.setZoom() method",
-  "confidence": "60%",
+  "confidence": "HIGH",
   "root_cause_1": "send() requires handshakeComplete for ALL messages including handshake itself",
   "root_cause_2": "messagesContainer is null when _addWelcomeMessage runs - DOM timing issue",
   "root_cause_3": "heartbeat adds unnecessary complexity and noise",
@@ -125,14 +125,19 @@
   "user_satisfaction": "golden",
   "ready_for_testing": true,
   "research_topic": "zoom functionality in fitView",
-  "next_steps": "verify ServerRunner, .env.example, and frontend",
+  "next_steps": [
+    "Design reservation protocol",
+    "Design resource registry",
+    "Design deadlock prevention",
+    "Design history merge strategy"
+  ],
   "document_written": true,
   "ready_to_implement": true,
   "readme_last_modified": "2025-10-14",
   "agent_name_change": "FL_JS -> Ren",
   "target_file": "web/js/fl_api.js",
   "notes_location": "notes/ws_port/implementation.md",
-  "implementation_ready": "true",
+  "implementation_ready": true,
   "root_cause_confirmed": "true",
   "ready_for_fix": true,
   "bug_found": true,
@@ -181,7 +186,16 @@
   "ideas_document": "notes/expressing_tools/ideas.md",
   "investigation_document": "notes/error_feedback/new_approach/deep_investigation.md",
   "refined_ideas_document": "notes/expressing_tools/ideas.md",
-  "key_findings": "Frontend has hardcoded ws://127.0.0.1:8000/ws in 2 places, needs dynamic port from backend API",
+  "key_findings": [
+    "Error-based coordination via ResourceBusyError exception",
+    "Reservation system lives in ConnectionManager (manager.py)",
+    "Helper function with_reservation() wraps tool logic",
+    "FastMCP catches exceptions and returns as tool errors",
+    "Agent sees structured error with reservation metadata",
+    "Minimal changes: add ReservationManager + wrap tools",
+    "Shard ID passed via WebSocket tool_request messages",
+    "Timeout-based expiry prevents deadlocks"
+  ],
   "implementation_document": "notes/expressing_tools/implementation.md",
   "key_components": "ToolActivity class, ChatUI integration, extension event handlers",
   "primary_suspects": "CSS positioning, tool execution speed, DOM insertion",
@@ -331,5 +345,30 @@
   "platform": "Windows",
   "needs_info": "ws_url value, .env contents, backend server status",
   "root_cause_found": "true",
-  "ready_to_code": "true"
+  "ready_to_code": "true",
+  "current_investigation": "realtime_task_orchestration",
+  "investigation_depth": "deepest_complete",
+  "ready_for_design": true,
+  "key_constraints": [
+    "Per-resource-instance granularity",
+    "Fixed 30s timeout",
+    "Must work with PydanticAI's message history system",
+    "Respect async (ws_manager) vs sequential (agent.run) boundary"
+  ],
+  "design_decisions_needed": [
+    "Reservation hook points in agent.run sequential flow",
+    "How to integrate with filter_message_history",
+    "Event notification mechanism for queued reservations",
+    "Resource instance identification strategy"
+  ],
+  "key_insights": [
+    "Tools declare resource usage via helper",
+    "Reservation system lives in session manager",
+    "MCP error returns become graceful wait messages",
+    "Errors contain reservation metadata (who, why, how long)",
+    "Agent receives structured error with wait instructions",
+    "Minimal codebase changes - use existing error flow"
+  ],
+  "design_approach": "Tool-level hooks + error-based coordination",
+  "estimated_effort": "4 hours for MVP"
 }
