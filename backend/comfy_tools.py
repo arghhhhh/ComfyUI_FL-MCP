@@ -194,55 +194,121 @@ class ComfyUITools:
             logger.error(f"Failed to fetch history: {e}")
             raise ComfyUIError(f"Failed to fetch history: {e}")    
     
-    def list_folders(self, folder_type: Union[str, ComfyFolderType]) -> List[ComfyFileInfo]:
-        """List contents of a ComfyUI directory by type."""
-        try:
-            # Convert string to enum if needed
-            if isinstance(folder_type, str):
+    def list_folders(
+        self,
+        folder_type: Union[str, ComfyFolderType],
+        pattern: Optional[str] = None,
+        sort_by: Optional[str] = None,
+        order: str = "asc",
+        limit: int = 50
+    ) -> List[ComfyFileInfo]:
+        """List contents of a ComfyUI directory by type with filtering and sorting.
+        
+        Args:
+            folder_type: Type of folder to list (e.g., 'checkpoints', 'loras')
+            pattern: Optional regex pattern to filter paths (case-insensitive)
+            sort_by: Optional sort field ('name', 'size', 'modified_time', 'type')
+            order: Sort order ('asc' or 'desc')
+            limit: Maximum number of items to return
+        
+        Returns:
+            List of ComfyFileInfo objects, filtered, sorted, and limited
+        
+        Raises:
+            ComfyUINotFoundError: If ComfyUI installation not found
+            ComfyUISecurityError: If path traversal detected
+        """
+        # Convert string to enum if needed
+        if isinstance(folder_type, str):
+            try:
                 folder_type = ComfyFolderType(folder_type)
-            
-            # Get folder path
-            folder_path = self.folder_mappings.get(folder_type)
-            if not folder_path:
-                raise ComfyUIError(f"Unknown folder type: {folder_type}")
-            
-            # Validate and resolve path
-            full_path = self._validate_path(folder_path)
-            
-            if not full_path.exists():
-                logger.warning(f"Directory does not exist: {full_path}")
-                return []
-            
-            if not full_path.is_dir():
-                raise ComfyUIError(f"Path is not a directory: {folder_path}")
-            
-            # List directory contents
-            items = []
-            for item in full_path.iterdir():
-                try:
-                    stat = item.stat()
-                    items.append(ComfyFileInfo(
-                        name=item.name,
-                        path=str(item.relative_to(self.comfyui_root)),
-                        is_directory=item.is_dir(),
-                        size=stat.st_size if item.is_file() else None,
-                        modified_time=stat.st_mtime,
-                        extension=item.suffix.lower() if item.is_file() else None
-                    ))
-                except (OSError, PermissionError) as e:
-                    logger.warning(f"Cannot access {item}: {e}")
-                    continue
-            
-            # Sort: directories first, then by name
+            except ValueError:
+                raise ComfyUIError(f"Invalid folder type: {folder_type}")
+        
+        # Get folder path
+        if folder_type not in self.folder_mappings:
+            raise ComfyUIError(f"Unknown folder type: {folder_type}")
+        
+        folder_path = self.comfyui_root / self.folder_mappings[folder_type]
+        
+        # Security check
+        try:
+            folder_path = folder_path.resolve()
+            if not str(folder_path).startswith(str(self.comfyui_root)):
+                raise ComfyUISecurityError(
+                    f"Path traversal detected: {folder_path} outside {self.comfyui_root}"
+                )
+        except (OSError, RuntimeError) as e:
+            raise ComfyUIError(f"Invalid path: {e}")
+        
+        if not folder_path.exists():
+            logger.warning(f"Folder does not exist: {folder_path}")
+            return []
+        
+        # Build items list
+        items = []
+        for entry in folder_path.iterdir():
+            try:
+                stat = entry.stat()
+                relative_path = str(entry.relative_to(self.comfyui_root))
+                
+                items.append(ComfyFileInfo(
+                    name=entry.name,
+                    path=relative_path,
+                    is_directory=entry.is_dir(),
+                    size=stat.st_size if entry.is_file() else None,
+                    modified_time=stat.st_mtime,
+                    extension=entry.suffix[1:] if entry.suffix else None
+                ))
+            except (OSError, PermissionError) as e:
+                logger.warning(f"Cannot access {entry}: {e}")
+                continue
+        
+        # Apply regex filter if pattern provided
+        if pattern:
+            try:
+                regex = re.compile(pattern, re.IGNORECASE)
+                original_count = len(items)
+                items = [item for item in items if regex.search(item.path)]
+                logger.debug(
+                    f"Filtered from {original_count} to {len(items)} items "
+                    f"matching pattern: {pattern}"
+                )
+            except re.error as e:
+                logger.warning(f"Invalid regex pattern '{pattern}': {e}")
+                # Continue without filtering on invalid pattern
+        
+        # Apply sorting
+        if sort_by is None:
+            # Default: directories first, then alphabetical by name
             items.sort(key=lambda x: (not x.is_directory, x.name.lower()))
+            logger.debug("Applied default sort: directories first, then by name")
+        else:
+            # Sort by specified field
+            reverse = (order == "desc")
             
-            logger.info(f"Listed {len(items)} items in {folder_path}")
-            return items
+            if sort_by == "name":
+                items.sort(key=lambda x: x.name.lower(), reverse=reverse)
+            elif sort_by == "size":
+                items.sort(key=lambda x: x.size or 0, reverse=reverse)
+            elif sort_by == "modified_time":
+                items.sort(key=lambda x: x.modified_time or 0, reverse=reverse)
+            elif sort_by == "type":
+                # Sort by: directories vs files, then by extension
+                if order == "asc":
+                    items.sort(key=lambda x: (not x.is_directory, x.extension or ""))
+                else:
+                    items.sort(key=lambda x: (x.is_directory, x.extension or ""), reverse=True)
             
-        except ComfyUIError:
-            raise
-        except Exception as e:
-            raise ComfyUIError(f"Error listing folder {folder_type}: {e}")
+            logger.debug(f"Sorted by {sort_by} ({order})")
+        
+        # Apply limit
+        original_count = len(items)
+        if limit and len(items) > limit:
+            items = items[:limit]
+            logger.debug(f"Limited results from {original_count} to {limit} items")
+        
+        return items
     
     def read_file(self, path: str, max_size: int = 1024 * 1024) -> str:
         """Read a text file within the ComfyUI directory."""

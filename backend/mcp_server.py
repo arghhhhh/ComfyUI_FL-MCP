@@ -1377,41 +1377,93 @@ async def get_system_info(request: GetSystemInfoRequest, ctx: Context) -> Dict[s
 
 @mcp.tool()
 async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> Dict[str, Any]:
-    """List contents of ComfyUI custom nodes, checkpoints, input, output and more with type-aware organization.
+    """List contents of ComfyUI custom nodes, checkpoints, input, output, workflows folders and more with filtering, sorting, and limiting.
     
-    This tool provides agents with deterministic access to ComfyUI directory structure.
+    Supports regex pattern filtering on full paths, flexible sorting by multiple
+    dimensions (name, size, modified_time, type), sort order control (asc/desc),
+    and result limiting for efficient agent-based file discovery.
     
     USE CASES:
     - Custom Node Discovery: folder_type="custom_nodes" → List all installed node packs
     - Model Management: folder_type="checkpoints" → List available diffusion models
     - LoRA Discovery: folder_type="loras" → List LoRA adaptation files
-    - Output Review: folder_type="output" → List recently generated images
+    - Output Review: folder_type="output", sort_by="modified_time", order="desc" → List recently generated images
     - Input Files: folder_type="input" → List available input files
-    
-    SECURITY: All paths are validated and sandboxed to ComfyUI installation.
+    - Workflow Discovery: folder_type="workflows" → List locally saved workflows
+
+    Other Examples:
+        - Find SDXL models: {"folder_type": "checkpoints", "pattern": ".*sdxl.*"}
+        - Largest files first: {"folder_type": "checkpoints", "sort_by": "size", "order": "desc", "limit": 10}
+        - Recent outputs: {"folder_type": "output", "sort_by": "modified_time", "order": "desc"}
+
+    SECURITY: All paths are validated and sandboxed to ComfyUI installation.    
     """
-    await _report_tool_activity(ctx, "comfy_list_folders")
-    
     try:
-        tools = get_comfy_tools()
-        items = tools.list_folders(request.folder_type)
+        logger.info(
+            f"Listing ComfyUI folder: {request.folder_type.value} "
+            f"(pattern={request.pattern}, sort={request.sort_by}, "
+            f"order={request.order}, limit={request.limit})"
+        )
         
-        return {
+        tools = get_comfy_tools()
+        
+        # Get total count before filtering/limiting
+        all_items = tools.list_folders(request.folder_type)
+        total_available = len(all_items)
+        
+        # Get filtered/sorted/limited items
+        items = tools.list_folders(
+            request.folder_type,
+            pattern=request.pattern,
+            sort_by=request.sort_by,
+            order=request.order,
+            limit=request.limit
+        )
+        
+        response = {
             "folder_type": request.folder_type.value,
             "folder_path": tools.folder_mappings[request.folder_type],
-            "items": items,
-            "total_items": len(items),
+            "items": [item.model_dump() for item in items],
+            "returned_items": len(items),
+            "total_available": total_available,
+            "truncated": len(items) < total_available,
+            "filter_pattern": request.pattern,
+            "sort_by": request.sort_by,
+            "order": request.order,
+            "limit": request.limit,
             "comfyui_root": str(tools.comfyui_root)
         }
         
+        logger.info(
+            f"Successfully listed {len(items)} items from {request.folder_type.value} "
+            f"(total available: {total_available}, truncated: {response['truncated']})"
+        )
+        return response
+        
     except ComfyUINotFoundError as e:
-        raise RuntimeError(f"ComfyUI installation not found: {e}")
+        error_msg = f"ComfyUI installation not found: {e}"
+        logger.error(error_msg)
+        return {
+            "error": error_msg,
+            "error_type": "ComfyUINotFoundError",
+            "folder_type": request.folder_type.value
+        }
     except ComfyUIError as e:
-        raise RuntimeError(f"ComfyUI operation failed: {e}")
+        error_msg = f"ComfyUI error: {e}"
+        logger.error(error_msg)
+        return {
+            "error": error_msg,
+            "error_type": "ComfyUIError",
+            "folder_type": request.folder_type.value
+        }
     except Exception as e:
-        logger.error(f"Unexpected error in comfy_list_folders: {e}")
-        raise RuntimeError(f"Tool execution failed: {e}")
-
+        error_msg = f"Unexpected error listing folders: {e}"
+        logger.exception(error_msg)
+        return {
+            "error": error_msg,
+            "error_type": type(e).__name__,
+            "folder_type": request.folder_type.value
+        }
 
 @mcp.tool()
 async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> Dict[str, Any]:
