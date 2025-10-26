@@ -1,218 +1,26 @@
 {
-  "current_mode": "implementation",
-  "task": "tool event broadcasting fix complete",
+  "current_mode": "research",
+  "task": "implementation plan complete",
   "project_name": "fl_js",
   "architecture": {
-    "summary": "Ren - A ComfyUI AI assistant that provides natural language control over workflows. Multi-tier architecture: Python backend (FastAPI + PydanticAI) communicates via WebSocket with JavaScript frontend (ComfyUI extension). MCP subprocess handles tool execution, frontend executes workflow manipulation tools, PWA provides mobile access.",
+    "summary": "ComfyUI chat interface with markdown rendering",
     "components": {
-      "backend_server": {
-        "description": "FastAPI server managing WebSocket connections, agent orchestration, and session management",
+      "message_bubble": {
+        "description": "Markdown renderer with custom link and image handlers",
         "files": [
-          "backend/server.py"
+          "web/js/_components/MessageBubble.js"
         ],
         "key_classes": [
-          "FastAPI app"
-        ],
-        "key_functions": [
-          "websocket_endpoint",
-          "handle_user_message",
-          "handle_tool_result",
-          "filtered_message_history"
-        ]
-      },
-      "agent_system": {
-        "description": "PydanticAI-based agent with conversation management and MCP server integration",
-        "files": [
-          "backend/agent.py"
-        ],
-        "key_classes": [
-          "AgentManager",
-          "ConversationManager"
-        ],
-        "key_functions": [
-          "create_agent",
-          "get_llm_model",
-          "load_system_prompt"
-        ]
-      },
-      "mcp_server": {
-        "description": "FastMCP tool server running as subprocess, provides 45+ tools for workflow control",
-        "files": [
-          "backend/mcp_server.py"
-        ],
-        "key_classes": [
-          "MCPWebSocketClient",
-          "FastMCP"
-        ],
-        "key_functions": [
-          "mcp_lifespan",
-          "_execute_tool",
-          "_report_tool_activity",
-          "main"
-        ]
-      },
-      "session_manager": {
-        "description": "Multi-client session management with connection tracking per type (frontend/pwa/mcp)",
-        "files": [
-          "backend/manager.py"
-        ],
-        "key_classes": [
-          "ConnectionManager",
-          "SessionContext"
-        ],
-        "key_functions": [
-          "connect",
-          "disconnect",
-          "send_message",
-          "cleanup_stale_sessions"
-        ]
-      },
-      "callback_router": {
-        "description": "Routes tool execution callbacks between backend and frontend (legacy support)",
-        "files": [
-          "backend/callback_router.py"
-        ],
-        "key_classes": [
-          "CallbackRouter"
-        ],
-        "key_functions": [
-          "request_tool_execution",
-          "handle_tool_result"
-        ]
-      },
-      "comfy_tools": {
-        "description": "ComfyUI filesystem access tools for browsing custom nodes, models, and resources",
-        "files": [
-          "backend/comfy_tools.py"
-        ],
-        "key_classes": [
-          "ComfyUITools"
-        ],
-        "key_functions": [
-          "list_folders",
-          "read_file",
-          "search_files",
-          "extract_workflow_from_image"
-        ]
-      },
-      "node_library": {
-        "description": "ComfyUI node type discovery and compatibility checking via API",
-        "files": [
-          "backend/node_library.py"
-        ],
-        "key_classes": [
-          "NodeLibraryClient"
-        ],
-        "key_functions": [
-          "search_nodes",
-          "get_node_details",
-          "find_compatible_nodes"
-        ]
-      },
-      "comfy_manager": {
-        "description": "ComfyUI Manager integration for node pack and model discovery",
-        "files": [
-          "backend/comfy_manager.py"
-        ],
-        "key_classes": [
-          "ComfyManagerClient"
-        ],
-        "key_functions": [
-          "search_node_packs",
-          "get_node_mappings",
-          "search_external_models"
-        ]
-      },
-      "config_system": {
-        "description": "Settings management with provider-specific tuning (Gemini/Claude/OpenAI/OpenRouter)",
-        "files": [
-          "backend/config.py"
-        ],
-        "key_classes": [
-          "Settings"
-        ],
-        "key_functions": []
-      },
-      "server_runner": {
-        "description": "Auto-start backend server when ComfyUI loads with monitoring and restart",
-        "files": [
-          "backend/server_runner.py"
-        ],
-        "key_classes": [
-          "ServerRunner"
-        ],
-        "key_functions": [
-          "start",
-          "stop",
-          "_monitor_process"
-        ]
-      },
-      "comfyui_extension": {
-        "description": "ComfyUI extension entry point that auto-starts backend and registers web directory",
-        "files": [
-          "__init__.py"
-        ],
-        "key_classes": [],
-        "key_functions": []
-      },
-      "frontend_extension": {
-        "description": "Main JavaScript extension coordinating WebSocket, tools, and UI",
-        "files": [
-          "web/js/extension.js"
-        ],
-        "key_classes": [],
-        "key_functions": [
-          "setup",
-          "fetchClientConfig"
-        ]
-      },
-      "websocket_client": {
-        "description": "Frontend WebSocket client with event emitter pattern and reconnection logic",
-        "files": [
-          "web/js/ws_client.js"
-        ],
-        "key_classes": [
-          "WSClient"
-        ],
-        "key_functions": [
-          "connect",
-          "send",
-          "on",
-          "setupComfyListeners"
-        ]
-      },
-      "fl_api": {
-        "description": "Clean wrapper around legacy FL_JS functions for workflow manipulation",
-        "files": [
-          "web/js/fl_api.js"
-        ],
-        "key_classes": [
-          "FL_API"
+          "MessageBubble"
         ],
         "key_functions": [
           "create",
-          "connect",
-          "setValues",
-          "queueWorkflow",
-          "getLayout",
-          "modifyLayout"
-        ]
-      },
-      "tool_executor": {
-        "description": "Executes tool requests from backend using FL_API, routes results back",
-        "files": [
-          "web/js/tool_executor.js"
-        ],
-        "key_classes": [
-          "ToolExecutor"
-        ],
-        "key_functions": [
-          "executeToolRequest",
-          "execute"
+          "_createContent",
+          "_renderMermaidDiagram"
         ]
       },
       "chat_ui": {
-        "description": "Chat interface with markdown rendering, tool activity breadcrumbs, and Ren links",
+        "description": "Main chat interface managing messages and user input",
         "files": [
           "web/js/chat_ui.js"
         ],
@@ -220,169 +28,39 @@
           "ChatUI"
         ],
         "key_functions": [
-          "sendMessage",
           "addMessage",
-          "startToolInChain",
-          "completeToolInChain"
+          "_renderMessage",
+          "_sendMessage"
         ]
       },
-      "session_manager_frontend": {
-        "description": "Frontend session ID management using localStorage",
+      "styling": {
+        "description": "Lavender Dreams theme CSS for chat interface",
         "files": [
-          "web/js/session_manager.js"
+          "web/js/style.css"
         ],
         "key_classes": [
-          "SessionManager"
-        ],
-        "key_functions": [
-          "getSessionId",
-          "generateSessionId"
+          "N/A"
         ]
-      },
-      "query_executor": {
-        "description": "Client-side query DSL execution for workflow analysis",
-        "files": [
-          "web/js/query_executor.js"
-        ],
-        "key_classes": [
-          "QueryExecutor"
-        ],
-        "key_functions": [
-          "execute",
-          "filter",
-          "traverse"
-        ]
-      },
-      "diagram_generator": {
-        "description": "Mermaid diagram generation from workflow structure",
-        "files": [
-          "web/js/diagram_generator.js"
-        ],
-        "key_classes": [
-          "DiagramGenerator"
-        ],
-        "key_functions": [
-          "generate"
-        ]
-      },
-      "pwa_app": {
-        "description": "Progressive Web App for mobile access with session picker",
-        "files": [
-          "web/pwa/index.html",
-          "web/pwa/app.js",
-          "web/pwa/service-worker.js"
-        ],
-        "key_classes": [],
-        "key_functions": []
-      },
-      "legacy_fl_js": {
-        "description": "Original FL_JS implementation (still used for some tool execution)",
-        "files": [
-          "legacy/FL_JS.py",
-          "legacy/fl_js.js"
-        ],
-        "key_classes": [],
-        "key_functions": []
       }
     },
     "relationships": [
       {
         "hyperedge": [
-          "backend_server",
-          "agent_system",
-          "session_manager"
-        ],
-        "relationship": "Backend server creates agent instances per session via AgentManager, manages connections via ConnectionManager"
-      },
-      {
-        "hyperedge": [
-          "agent_system",
-          "mcp_server"
-        ],
-        "relationship": "Agent spawns MCP server as subprocess, communicates via WebSocket for tool execution"
-      },
-      {
-        "hyperedge": [
-          "mcp_server",
-          "backend_server",
-          "frontend_extension"
-        ],
-        "relationship": "MCP subprocess sends tool_request to backend, backend routes to frontend via WebSocket"
-      },
-      {
-        "hyperedge": [
-          "frontend_extension",
-          "websocket_client",
-          "backend_server"
-        ],
-        "relationship": "Frontend extension initializes WSClient which connects to backend WebSocket endpoint"
-      },
-      {
-        "hyperedge": [
-          "tool_executor",
-          "fl_api",
-          "websocket_client"
-        ],
-        "relationship": "ToolExecutor receives tool_request events, executes via FL_API, sends results back via WSClient"
-      },
-      {
-        "hyperedge": [
           "chat_ui",
-          "websocket_client",
-          "frontend_extension"
+          "message_bubble"
         ],
-        "relationship": "ChatUI sends user messages via WSClient, receives agent_response and tool_report events"
+        "relationship": "ChatUI uses MessageBubble to render individual messages with markdown"
       },
       {
         "hyperedge": [
-          "mcp_server",
-          "comfy_tools",
-          "node_library",
-          "comfy_manager"
+          "message_bubble",
+          "styling"
         ],
-        "relationship": "MCP tools use ComfyUITools for filesystem, NodeLibraryClient for node discovery, ComfyManagerClient for pack search"
-      },
-      {
-        "hyperedge": [
-          "backend_server",
-          "config_system"
-        ],
-        "relationship": "Server loads Settings on startup, applies provider-specific tuning for LLM interactions"
-      },
-      {
-        "hyperedge": [
-          "comfyui_extension",
-          "server_runner",
-          "backend_server"
-        ],
-        "relationship": "ComfyUI __init__.py uses ServerRunner to auto-start backend server on load"
-      },
-      {
-        "hyperedge": [
-          "pwa_app",
-          "backend_server",
-          "session_manager"
-        ],
-        "relationship": "PWA connects to backend via WebSocket, can join existing frontend sessions"
-      },
-      {
-        "hyperedge": [
-          "query_executor",
-          "fl_api"
-        ],
-        "relationship": "QueryExecutor uses FL_API to access workflow graph for filtering and traversal"
-      },
-      {
-        "hyperedge": [
-          "callback_router",
-          "session_manager",
-          "mcp_server"
-        ],
-        "relationship": "CallbackRouter (legacy) provides alternative tool execution path, still used by some MCP tools"
+        "relationship": "MessageBubble creates HTML elements styled by CSS classes"
       }
     ]
   },
-  "focus": "backend now broadcasts to all display clients",
+  "focus": "media embedding implementation documented",
   "last_investigation": "queue_delete",
   "investigation_depth": "implementation",
   "current_investigation": "tool_breadcrumbs_pwa",
@@ -393,5 +71,7 @@
   "recommendation": "simple broadcast approach",
   "files_modified": "backend/server.py",
   "lines_changed": 50,
-  "status": "ready for testing"
+  "status": "ready for testing",
+  "main_focus": "markdown renderer media handling",
+  "investigation_complete": true
 }

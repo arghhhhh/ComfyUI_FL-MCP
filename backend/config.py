@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # LLM Provider Configuration
     llm_provider: Literal["openai", "anthropic", "gemini", "openrouter"] = "gemini"
+    local_llm_url: Optional[str] = None # For use with local hosting like ollama or vllm
     llm_model: Optional[str] = None  # If None, uses provider default
     llm_temperature: float = 0.7
     llm_max_tokens: int = 32000
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     google_api_key: str = ""
     openrouter_api_key: str = ""
+    local_api_key: str = ""
 
     # WebSocket Settings
     ws_host: str = "127.0.0.1"

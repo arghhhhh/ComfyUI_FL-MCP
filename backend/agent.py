@@ -141,6 +141,16 @@ def get_llm_model():
             )
         )
     
+    elif settings.llm_provider == "local":
+        # OpenRouter uses OpenAI-compatible API
+        return OpenAIModel(
+            model_name,
+            provider=OpenAIProvider(
+                base_url=settings.local_llm_url,
+                api_key=settings.local_api_key
+            )
+        )
+
     elif settings.llm_provider == "anthropic":
         from pydantic_ai.models.anthropic import AnthropicModel
         return AnthropicModel(model_name)
