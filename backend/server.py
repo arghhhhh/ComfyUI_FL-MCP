@@ -28,9 +28,10 @@ from pydantic_ai import Agent, UnexpectedModelBehavior
 from config import settings
 from manager import manager
 from callback_router import CallbackRouter, current_session_id
-from agent import agent_manager
+from agent import agent_manager, load_system_prompt
 import provider_config
 from auth_service import auth_service
+from claude_code_runner import run_claude_code
 from chat_broadcaster import ChatBroadcaster, StreamHandle, SubscribeResult
 from models import (
     Handshake,
@@ -570,6 +571,26 @@ async def _run_agent_for_sse(
 
         if provider_config.current_provider() == "cloud":
             await auth_service.get_valid_access_token()
+            status = provider_config.status()
+            usage = await run_claude_code(
+                session_id=session_id,
+                prompt=user_message,
+                system_prompt=load_system_prompt(),
+                model=status.get("model") or "sonnet",
+                stream_handle=handle,
+                block_index=block_index,
+            )
+            context.last_activity = datetime.now()
+            await handle.publish({
+                "type": "block_stop",
+                "blockIndex": block_index,
+            })
+            await handle.publish({
+                "type": "done",
+                "inputTokens": usage.get("inputTokens", 0),
+                "outputTokens": usage.get("outputTokens", 0),
+            })
+            return
 
         agent = agent_manager.get_agent(session_id)
 
