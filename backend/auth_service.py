@@ -13,9 +13,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
-import urllib.request
-import urllib.error
 from urllib.parse import urlencode
+
+import httpx
 
 
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -39,18 +39,15 @@ def _base64url(data: bytes) -> str:
 
 
 def _post_json(url: str, body: Dict[str, Any]) -> Dict[str, Any]:
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Token request failed ({e.code}): {detail}") from e
+    with httpx.Client(timeout=30) as client:
+        response = client.post(
+            url,
+            json=body,
+            headers={"Content-Type": "application/json"},
+        )
+    if response.status_code >= 400:
+        raise RuntimeError(f"Token request failed ({response.status_code}): {response.text}")
+    return response.json()
 
 
 @dataclass
