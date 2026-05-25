@@ -14,46 +14,37 @@ export class MessageBubble {
     constructor() {
         // Configure marked for safe rendering
         const renderer = new marked.Renderer();
+        const resolveUrl = (href) => this._resolveUrl(href);
+        const escapeAttr = (value) => this._escapeAttr(value);
 
         // Override the default link renderer
         renderer.link = function(href, title, text) {
-            const safeTitle = title ? ` title="${title}"` : "";
+            href = String(href || "");
+            text = String(text || "");
+            const safeTitle = title ? ` title="${escapeAttr(title)}"` : "";
             
             // Handle ren:// protocol links
             if (href.startsWith("ren://")) {
                 const protocol = href.substring(6); // Remove "ren://"
                 
                 if (protocol.startsWith("message")) {
-                    return `<a href="#" class="ren-link" data-protocol="message" data-text="${text.replace(/"/g, '&quot;')}">${text}</a>`;
+                    return `<a href="#" class="ren-link" data-protocol="message" data-text="${escapeAttr(text)}">${text}</a>`;
                 }
                 
                 // Future ren:// protocols can be added here
-                return `<a href="#" class="ren-link" data-protocol="${protocol}">${text}</a>`;
+                return `<a href="#" class="ren-link" data-protocol="${escapeAttr(protocol)}">${text}</a>`;
             }
             
-            // Handle api/ links - prepend the backend URL
-            if (href.startsWith("api/")) {
-                // If on localhost, use the ws client's configured URL
-                if (window.location.hostname === '127.0.0.1' || window.location.hostname === '127.0.0.1') {
-                    // Extract protocol and host from ws client config (e.g., ws://127.0.0.1:8000/ws -> http://127.0.0.1:8000)
-                    if (window.wsClient && window.wsClient.config && window.wsClient.config.url) {
-                        const wsUrl = window.wsClient.config.url;
-                        const wsProtocol = wsUrl.startsWith('wss://') ? 'https://' : 'http://';
-                        const wsHost = wsUrl.replace(/^wss?:\/\//, '').split('/')[0]; // Extract host:port
-                        href = `${wsProtocol}${wsHost}/${href}`;
-                    } else {
-                        // Fallback to window location if ws client not available
-                        const backendUrl = `${window.location.protocol}//${window.location.host}`;
-                        href = `${backendUrl}/${href}`;
-                    }
-                } else {
-                    // For non-localhost (like ngrok), use the current browser location
-                    const backendUrl = `${window.location.protocol}//${window.location.host}`;
-                    href = `${backendUrl}/${href}`;
-                }
-            }
+            href = resolveUrl(href);
             
-            return `<a href="${href}"${safeTitle} target="_blank" rel="noopener noreferrer">${text}</a>`;
+            return `<a href="${escapeAttr(href)}"${safeTitle} target="_blank" rel="noopener noreferrer">${text}</a>`;
+        };
+
+        renderer.image = function(href, title, text) {
+            href = resolveUrl(String(href || ""));
+            const safeTitle = title ? ` title="${escapeAttr(title)}"` : "";
+            const safeAlt = escapeAttr(text || "");
+            return `<img src="${escapeAttr(href)}" alt="${safeAlt}"${safeTitle} loading="lazy" class="fl-message-image">`;
         };
 
         marked.setOptions({
@@ -167,6 +158,33 @@ export class MessageBubble {
             console.error('[MessageBubble] Mermaid render error:', error);
             // Keep code block on error
         }
+    }
+
+    _resolveUrl(href) {
+        if (!href || !href.startsWith("api/")) {
+            return href;
+        }
+
+        const wsUrl = window.wsClient?.config?.url;
+        if (wsUrl) {
+            const wsProtocol = wsUrl.startsWith("wss://") ? "https://" : "http://";
+            const wsHost = wsUrl.replace(/^wss?:\/\//, "").split("/")[0];
+            return `${wsProtocol}${wsHost}/${href}`;
+        }
+
+        if (window.FL_JS?.chatUI?.chatClient?.baseUrl) {
+            return `${window.FL_JS.chatUI.chatClient.baseUrl}/${href}`;
+        }
+
+        return `${window.location.protocol}//${window.location.host}/${href}`;
+    }
+
+    _escapeAttr(value) {
+        return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
     }
 
     /**

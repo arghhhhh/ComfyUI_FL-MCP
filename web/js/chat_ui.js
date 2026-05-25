@@ -807,16 +807,28 @@ export class ChatUI {
     _finishAssistantStream() {
         if (!this.streamingAssistantEl) return;
         if (this.streamingAssistantText.trim()) {
-            this.messages.push({
+            const message = {
                 role: 'assistant',
                 content: this.streamingAssistantText,
                 timestamp: new Date(),
                 displayRole: 'assistant'
-            });
+            };
+            const streamingEl = this.streamingAssistantEl;
+            this.messages.push(message);
+            this.messageBubble.create(message)
+                .then((messageEl) => {
+                    if (streamingEl.parentNode) {
+                        streamingEl.replaceWith(messageEl);
+                    }
+                    this._scrollToBottom();
+                })
+                .catch((error) => {
+                    console.error('[ChatUI] Failed to render final assistant message:', error);
+                    streamingEl.classList.remove('streaming');
+                });
         } else if (this.streamingAssistantEl.parentNode) {
             this.streamingAssistantEl.parentNode.removeChild(this.streamingAssistantEl);
         }
-        this.streamingAssistantEl.classList.remove('streaming');
         this.streamingAssistantEl = null;
         this.streamingAssistantContentEl = null;
         this.streamingAssistantText = '';

@@ -339,6 +339,16 @@
     opacity: 0.8;
 }
 
+.fl-message-image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 10px 0;
+    border-radius: 6px;
+    border: 1px solid rgba(200, 162, 200, 0.18);
+    background: rgba(0, 0, 0, 0.2);
+}
+
 /* Mermaid Diagram */
 .fl-mermaid-container {
     background: rgba(0, 0, 0, 0.2);
