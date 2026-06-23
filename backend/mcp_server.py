@@ -7,10 +7,12 @@ ComfyUI workflows through WebSocket-based tool execution.
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import uuid
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Dict, List, Optional, Union, Literal
+from urllib.parse import quote
 
 import websockets
 import httpx
@@ -378,6 +380,42 @@ async def _comfy_request(
     }
 
 
+def _resolve_comfy_file(path: str) -> str:
+    tools = get_comfy_tools()
+    return str(tools._validate_path(path))
+
+
+async def _comfy_upload_file(
+    path: str,
+    endpoint: str,
+    *,
+    file_field: str = "image",
+    data: Optional[Dict[str, Any]] = None,
+    timeout: float = 60.0,
+) -> Dict[str, Any]:
+    full_path = _resolve_comfy_file(path)
+    filename = os.path.basename(full_path)
+    mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    url = f"{_comfy_base_url()}{endpoint}"
+
+    form_data = {k: json.dumps(v) if isinstance(v, (dict, list)) else str(v) for k, v in (data or {}).items()}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        with open(full_path, "rb") as file_obj:
+            files = {file_field: (filename, file_obj, mime_type)}
+            response = await client.post(url, data=form_data, files=files)
+
+    try:
+        payload: Any = response.json()
+    except Exception:
+        payload = response.text
+    return {
+        "success": 200 <= response.status_code < 300,
+        "status": response.status_code,
+        "data": payload,
+        "source_path": path,
+    }
+
+
 # ============================================================================
 # REQUEST MODELS
 # ============================================================================
@@ -722,12 +760,27 @@ class ComfySettingsSetRequest(BaseModel):
 class ManagerQueueActionRequest(BaseModel):
     """Queue a ComfyUI Manager action. Requires explicit confirmation."""
     endpoint: Literal[
-        "install", "update", "uninstall", "reinstall", "disable", "fix",
-        "install_model", "update_comfyui", "update_all"
+        "install", "update", "uninstall", "disable", "enable", "fix",
+        "install_model", "install-model", "update_comfyui", "update-comfyui",
+        "update_all", "update-all"
     ] = Field(..., description="Manager queue endpoint/action")
     payload: Dict[str, Any] = Field(default_factory=dict, description="Raw Manager payload for that action")
     confirmed: bool = Field(False, description="Must be true to perform install/update/uninstall/disable actions")
     start_queue: bool = Field(True, description="Start the Manager worker queue after enqueueing")
+    client_id: str = Field("ren", description="Manager v4 client identifier")
+    ui_id: Optional[str] = Field(None, description="Optional Manager v4 task UI ID")
+
+class ManagerInstalledPacksRequest(BaseModel):
+    """List installed Manager v4 node packs."""
+    mode: Literal["default", "imported"] = Field("default", description="Installed pack source")
+
+class ManagerQueueStatusRequest(BaseModel):
+    """Read Manager v4 queue status."""
+    client_id: Optional[str] = Field(None, description="Optional Manager client ID filter")
+
+class ManagerSnapshotsRequest(BaseModel):
+    """List Manager v4 snapshots."""
+    pass
 
 class DeleteQueueItemsRequest(BaseModel):
     """Request to delete items from the queue."""
@@ -954,7 +1007,7 @@ class ManagerSearchNodesRequest(BaseModel):
 class ManagerGetNodeMappingsRequest(BaseModel):
     """Get node type to pack mappings from ComfyUI Manager."""
     node_type: Optional[str] = Field(None, description="Specific node type to look up (empty for all)")
-    mode: Literal["local", "remote", "nickname"] = Field("local", description="Mapping source")
+    mode: Literal["local", "remote", "cache", "nickname"] = Field("local", description="Mapping source")
 
 
 class ManagerCheckUpdatesRequest(BaseModel):
@@ -1014,6 +1067,58 @@ class ExtractWorkflowFromImageRequest(BaseModel):
         ...,
         description="Path to PNG file relative to ComfyUI root (e.g., 'output/ComfyUI_00042_.png')"
     )
+
+class ComfyUploadImageRequest(BaseModel):
+    """Upload an image already present under the ComfyUI root."""
+    image_path: str = Field(..., description="Relative path under ComfyUI root to upload")
+    image_type: Literal["input", "output", "temp"] = Field("input", description="ComfyUI target image type")
+    subfolder: str = Field("", description="Target subfolder")
+    overwrite: bool = Field(False, description="Overwrite existing destination file")
+
+class ComfyUploadMaskRequest(BaseModel):
+    """Upload a mask already present under the ComfyUI root."""
+    image_path: str = Field(..., description="Relative path under ComfyUI root to mask image")
+    original_ref: Dict[str, Any] = Field(..., description="Original image reference expected by /upload/mask")
+    image_type: Literal["input", "output", "temp"] = Field("input", description="ComfyUI target image type")
+    subfolder: str = Field("", description="Target subfolder")
+
+class ComfyModelsListRequest(BaseModel):
+    """List ComfyUI model folders or files."""
+    folder: Optional[str] = Field(None, description="Optional model folder name such as checkpoints or loras")
+
+class ComfyWorkflowTemplatesRequest(BaseModel):
+    """List workflow templates."""
+    pack: Optional[str] = Field(None, description="Optional custom node pack name")
+    filename: Optional[str] = Field(None, description="Optional template JSON filename")
+
+class ComfyGlobalSubgraphsRequest(BaseModel):
+    """List or read global subgraphs."""
+    id: Optional[str] = Field(None, description="Optional subgraph ID")
+
+class ComfyAssetsListRequest(BaseModel):
+    """List ComfyUI assets."""
+    limit: int = Field(50, ge=1, le=200, description="Maximum assets to return")
+    offset: int = Field(0, ge=0, description="Offset for pagination")
+    include_tags: Optional[List[str]] = Field(None, description="Only include assets with these tags")
+    exclude_tags: Optional[List[str]] = Field(None, description="Exclude assets with these tags")
+    name_contains: Optional[str] = Field(None, description="Filter by name substring")
+
+class ComfyAssetRequest(BaseModel):
+    """Read or delete one ComfyUI asset."""
+    asset_id: str = Field(..., description="Asset UUID")
+
+class ComfyAssetUploadRequest(BaseModel):
+    """Upload a local ComfyUI-root file to the assets API."""
+    file_path: str = Field(..., description="Relative path under ComfyUI root")
+    name: Optional[str] = Field(None, description="Optional asset display name")
+    tags: Optional[List[str]] = Field(None, description="Optional asset tags")
+    mime_type: Optional[str] = Field(None, description="Optional MIME type override")
+
+class ComfyTagsListRequest(BaseModel):
+    """List ComfyUI asset tags."""
+    prefix: Optional[str] = Field(None, description="Optional tag prefix")
+    limit: int = Field(100, ge=1, le=500, description="Maximum tags to return")
+    offset: int = Field(0, ge=0, description="Offset for pagination")
 
 
 # ===========================================================================
@@ -1777,12 +1882,18 @@ async def comfy_settings_set(request: ComfySettingsSetRequest, ctx: Context) -> 
 
 @mcp.tool()
 async def manager_queue_action(request: ManagerQueueActionRequest, ctx: Context) -> Dict[str, Any]:
-    """Queue a ComfyUI Manager action such as install/update/uninstall/disable.
+    """Queue a ComfyUI Manager v4 action such as install/update/uninstall/disable.
 
     This is intentionally confirmation-gated because Manager actions mutate the
     local ComfyUI installation and often require a restart.
     """
     await _report_tool_activity(ctx, "manager_queue_action")
+    endpoint_map = {
+        "install_model": "install-model",
+        "update_comfyui": "update-comfyui",
+        "update_all": "update-all",
+    }
+    kind = endpoint_map.get(request.endpoint, request.endpoint)
     if not request.confirmed:
         return {
             "success": False,
@@ -1795,29 +1906,112 @@ async def manager_queue_action(request: ManagerQueueActionRequest, ctx: Context)
             "payload": request.payload,
         }
 
-    result = await _comfy_request("POST", f"/manager/queue/{request.endpoint}", json_data=request.payload)
-    if request.start_queue and result.get("success"):
-        start_result = await _comfy_request("POST", "/manager/queue/start", json_data={})
-        result["queue_start"] = start_result
-    return result
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if not manager_client:
+        return {"success": False, "error": "ComfyUI Manager client not initialized"}
+    try:
+        return await manager_client.queue_action(
+            kind=kind,
+            payload=request.payload,
+            client_id=request.client_id,
+            ui_id=request.ui_id,
+            start_queue=request.start_queue,
+        )
+    except ManagerError as e:
+        return {"success": False, "error": str(e)}
 
 @mcp.tool()
-async def manager_queue_status(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
-    """Get ComfyUI Manager queue status."""
+async def manager_queue_status(request: ManagerQueueStatusRequest, ctx: Context) -> Dict[str, Any]:
+    """Get ComfyUI Manager v4 queue status."""
     await _report_tool_activity(ctx, "manager_queue_status")
-    return await _comfy_request("GET", "/manager/queue/status")
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if not manager_client:
+        return {"success": False, "error": "ComfyUI Manager client not initialized"}
+    try:
+        return {"success": True, "data": await manager_client.queue_status(client_id=request.client_id)}
+    except ManagerError as e:
+        return {"success": False, "error": str(e)}
 
 @mcp.tool()
 async def manager_queue_start(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
-    """Start the ComfyUI Manager worker queue."""
+    """Start the ComfyUI Manager v4 worker queue."""
     await _report_tool_activity(ctx, "manager_queue_start")
-    return await _comfy_request("POST", "/manager/queue/start", json_data={})
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if not manager_client:
+        return {"success": False, "error": "ComfyUI Manager client not initialized"}
+    try:
+        return {"success": True, "data": await manager_client.queue_start()}
+    except ManagerError as e:
+        return {"success": False, "error": str(e)}
 
 @mcp.tool()
 async def manager_queue_reset(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
-    """Reset the ComfyUI Manager queue."""
+    """Reset the ComfyUI Manager v4 queue."""
     await _report_tool_activity(ctx, "manager_queue_reset")
-    return await _comfy_request("POST", "/manager/queue/reset", json_data={})
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if not manager_client:
+        return {"success": False, "error": "ComfyUI Manager client not initialized"}
+    try:
+        return {"success": True, "data": await manager_client.queue_reset()}
+    except ManagerError as e:
+        return {"success": False, "error": str(e)}
+
+@mcp.tool()
+async def manager_v4_status(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
+    """Report ComfyUI Manager v4 availability and queue status."""
+    await _report_tool_activity(ctx, "manager_v4_status")
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if not manager_client:
+        return {"success": False, "error": "ComfyUI Manager client not initialized"}
+    try:
+        return {"success": True, "data": await manager_client.status()}
+    except ManagerError as e:
+        return {"success": False, "error": str(e)}
+
+@mcp.tool()
+async def manager_v4_queue_status(request: ManagerQueueStatusRequest, ctx: Context) -> Dict[str, Any]:
+    """Get ComfyUI Manager v4 queue status."""
+    return await manager_queue_status.fn(request, ctx)
+
+@mcp.tool()
+async def manager_v4_queue_action(request: ManagerQueueActionRequest, ctx: Context) -> Dict[str, Any]:
+    """Queue a confirmation-gated ComfyUI Manager v4 action."""
+    return await manager_queue_action.fn(request, ctx)
+
+@mcp.tool()
+async def manager_v4_installed_packs(request: ManagerInstalledPacksRequest, ctx: Context) -> Dict[str, Any]:
+    """List installed custom node packs through Manager v4."""
+    await _report_tool_activity(ctx, "manager_v4_installed_packs")
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if not manager_client:
+        return {"success": False, "error": "ComfyUI Manager client not initialized"}
+    try:
+        data = await manager_client.list_installed_packs(mode=request.mode)
+        return {"success": True, "data": data, "count": len(data or {})}
+    except ManagerError as e:
+        return {"success": False, "error": str(e), "data": {}, "count": 0}
+
+@mcp.tool()
+async def manager_v4_snapshots(request: ManagerSnapshotsRequest, ctx: Context) -> Dict[str, Any]:
+    """List Manager v4 snapshots."""
+    await _report_tool_activity(ctx, "manager_v4_snapshots")
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if not manager_client:
+        return {"success": False, "error": "ComfyUI Manager client not initialized"}
+    try:
+        return {"success": True, "data": await manager_client.list_snapshots()}
+    except ManagerError as e:
+        return {"success": False, "error": str(e)}
+
+@mcp.tool()
+async def manager_v4_node_mappings(request: ManagerGetNodeMappingsRequest, ctx: Context) -> Dict[str, Any]:
+    """Find node-to-pack mappings through Manager v4."""
+    return await manager_get_node_mappings.fn(request, ctx)
+
+@mcp.tool()
+async def manager_v4_external_models(request: ManagerSearchExternalModelsRequest, ctx: Context) -> Dict[str, Any]:
+    """Search Manager v4 external model definitions."""
+    return await manager_search_external_models.fn(request, ctx)
 
 @mcp.tool()
 async def delete_queue_items(request: DeleteQueueItemsRequest, ctx: Context) -> Dict[str, Any]:
@@ -1983,6 +2177,221 @@ async def get_system_info(request: GetSystemInfoRequest, ctx: Context) -> Dict[s
         except Exception as e2:
             logger.error(f"Fatal error in get_system_info: {e2}")
             raise RuntimeError(f"Failed to get system information: {e2}")
+
+
+@mcp.tool()
+async def ren_provider_status(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
+    """Report Ren provider/chat readiness."""
+    await _report_tool_activity(ctx, "ren_provider_status")
+    try:
+        import provider_config
+        status = provider_config.status()
+        provider = status.get("provider")
+        provider_state = (status.get("providers") or {}).get(provider) or {}
+        return {
+            "success": True,
+            "provider": provider,
+            "model": status.get("model"),
+            "configured": bool(provider_state.get("configured")),
+            "status": status,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e), "configured": False}
+
+
+@mcp.tool()
+async def ren_capability_audit(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
+    """Audit Ren's current ability to control ComfyUI across bridge, provider, Manager, and REST modes."""
+    await _report_tool_activity(ctx, "ren_capability_audit")
+    audit: Dict[str, Any] = {}
+
+    client = ctx.request_context.lifespan_context.get('client')
+    audit["bridge"] = {
+        "available": bool(client and client.connected),
+        "session_id": getattr(client, "session_id", None) if client else None,
+        "state": "available" if client and client.connected else "blocked",
+        "reason": None if client and client.connected else "No connected MCP WebSocket client/frontend bridge",
+    }
+
+    system_stats = await _comfy_request("GET", "/system_stats")
+    features = await _comfy_request("GET", "/features")
+    audit["comfy_rest"] = {
+        "available": bool(system_stats.get("success")),
+        "state": "available" if system_stats.get("success") else "blocked",
+        "system": (system_stats.get("data") or {}).get("system") if system_stats.get("success") else None,
+        "error": system_stats.get("data") if not system_stats.get("success") else None,
+    }
+    feature_data = features.get("data") if features.get("success") else {}
+    audit["assets"] = {
+        "available": bool(feature_data.get("assets")),
+        "state": "available" if feature_data.get("assets") else "degraded",
+        "reason": None if feature_data.get("assets") else "ComfyUI assets feature is disabled",
+    }
+
+    try:
+        import provider_config
+        provider_status = provider_config.status()
+        provider = provider_status.get("provider")
+        provider_state = (provider_status.get("providers") or {}).get(provider) or {}
+        configured = bool(provider_state.get("configured"))
+        audit["provider"] = {
+            "available": configured,
+            "state": "available" if configured else "blocked",
+            "provider": provider,
+            "model": provider_status.get("model"),
+            "reason": None if configured else "Selected Ren provider is not configured",
+        }
+    except Exception as e:
+        audit["provider"] = {"available": False, "state": "blocked", "reason": str(e)}
+
+    manager_client = ctx.request_context.lifespan_context.get('manager_client')
+    if manager_client:
+        try:
+            manager_status = await manager_client.status()
+            available = bool(manager_status.get("supports_v4"))
+            audit["manager_v4"] = {
+                "available": available,
+                "state": "available" if available else "blocked",
+                "status": manager_status,
+                "reason": None if available else "ComfyUI Manager v4 is not available",
+            }
+        except Exception as e:
+            audit["manager_v4"] = {"available": False, "state": "blocked", "reason": str(e)}
+    else:
+        audit["manager_v4"] = {
+            "available": False,
+            "state": "blocked",
+            "reason": "Manager client not initialized",
+        }
+
+    audit["overall"] = {
+        "available": {
+            key: value.get("available")
+            for key, value in audit.items()
+            if isinstance(value, dict) and "available" in value
+        }
+    }
+    return {"success": True, "audit": audit}
+
+
+@mcp.tool()
+async def comfy_upload_image(request: ComfyUploadImageRequest, ctx: Context) -> Dict[str, Any]:
+    """Upload an image from inside the ComfyUI tree to ComfyUI's image input API."""
+    await _report_tool_activity(ctx, "comfy_upload_image")
+    return await _comfy_upload_file(
+        request.image_path,
+        "/upload/image",
+        data={
+            "type": request.image_type,
+            "subfolder": request.subfolder,
+            "overwrite": "true" if request.overwrite else "false",
+        },
+    )
+
+
+@mcp.tool()
+async def comfy_upload_mask(request: ComfyUploadMaskRequest, ctx: Context) -> Dict[str, Any]:
+    """Upload a mask from inside the ComfyUI tree to ComfyUI's mask upload API."""
+    await _report_tool_activity(ctx, "comfy_upload_mask")
+    return await _comfy_upload_file(
+        request.image_path,
+        "/upload/mask",
+        data={
+            "type": request.image_type,
+            "subfolder": request.subfolder,
+            "original_ref": request.original_ref,
+        },
+    )
+
+
+@mcp.tool()
+async def comfy_models_list(request: ComfyModelsListRequest, ctx: Context) -> Dict[str, Any]:
+    """List ComfyUI model folders or files using the native model manager routes."""
+    await _report_tool_activity(ctx, "comfy_models_list")
+    if request.folder:
+        return await _comfy_request("GET", f"/experiment/models/{quote(request.folder, safe='')}")
+    return await _comfy_request("GET", "/experiment/models")
+
+
+@mcp.tool()
+async def comfy_workflow_templates_list(request: ComfyWorkflowTemplatesRequest, ctx: Context) -> Dict[str, Any]:
+    """List workflow template packs or read a specific template JSON."""
+    await _report_tool_activity(ctx, "comfy_workflow_templates_list")
+    if request.pack and request.filename:
+        pack = quote(request.pack, safe="")
+        filename = quote(request.filename, safe="/")
+        return await _comfy_request("GET", f"/api/workflow_templates/{pack}/{filename}")
+    return await _comfy_request("GET", "/workflow_templates")
+
+
+@mcp.tool()
+async def comfy_global_subgraphs_list(request: ComfyGlobalSubgraphsRequest, ctx: Context) -> Dict[str, Any]:
+    """List global subgraphs or read one subgraph by ID."""
+    await _report_tool_activity(ctx, "comfy_global_subgraphs_list")
+    if request.id:
+        return await _comfy_request("GET", f"/global_subgraphs/{quote(request.id, safe='')}")
+    return await _comfy_request("GET", "/global_subgraphs")
+
+
+@mcp.tool()
+async def comfy_node_replacements_get(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
+    """Read ComfyUI node replacement mappings."""
+    await _report_tool_activity(ctx, "comfy_node_replacements_get")
+    return await _comfy_request("GET", "/node_replacements")
+
+
+@mcp.tool()
+async def comfy_assets_list(request: ComfyAssetsListRequest, ctx: Context) -> Dict[str, Any]:
+    """List ComfyUI assets when the assets feature is enabled."""
+    await _report_tool_activity(ctx, "comfy_assets_list")
+    params: Dict[str, Any] = {
+        "limit": request.limit,
+        "offset": request.offset,
+    }
+    if request.include_tags:
+        params["include_tags"] = request.include_tags
+    if request.exclude_tags:
+        params["exclude_tags"] = request.exclude_tags
+    if request.name_contains:
+        params["name_contains"] = request.name_contains
+    return await _comfy_request("GET", "/api/assets", params=params)
+
+
+@mcp.tool()
+async def comfy_asset_get(request: ComfyAssetRequest, ctx: Context) -> Dict[str, Any]:
+    """Read one ComfyUI asset metadata record."""
+    await _report_tool_activity(ctx, "comfy_asset_get")
+    return await _comfy_request("GET", f"/api/assets/{quote(request.asset_id, safe='')}")
+
+
+@mcp.tool()
+async def comfy_asset_upload(request: ComfyAssetUploadRequest, ctx: Context) -> Dict[str, Any]:
+    """Upload a ComfyUI-root file to the assets API."""
+    await _report_tool_activity(ctx, "comfy_asset_upload")
+    data: Dict[str, Any] = {}
+    if request.name:
+        data["name"] = request.name
+    if request.tags:
+        data["tags"] = request.tags
+    if request.mime_type:
+        data["mime_type"] = request.mime_type
+    return await _comfy_upload_file(request.file_path, "/api/assets", file_field="file", data=data)
+
+
+@mcp.tool()
+async def comfy_assets_upload(request: ComfyAssetUploadRequest, ctx: Context) -> Dict[str, Any]:
+    """Alias for comfy_asset_upload using the plural assets naming convention."""
+    return await comfy_asset_upload.fn(request, ctx)
+
+
+@mcp.tool()
+async def comfy_tags_list(request: ComfyTagsListRequest, ctx: Context) -> Dict[str, Any]:
+    """List ComfyUI asset tags."""
+    await _report_tool_activity(ctx, "comfy_tags_list")
+    params: Dict[str, Any] = {"limit": request.limit, "offset": request.offset}
+    if request.prefix:
+        params["prefix"] = request.prefix
+    return await _comfy_request("GET", "/api/tags", params=params)
 
 
 # ============================================================================
@@ -2482,7 +2891,8 @@ async def manager_search_nodes(
     - files (download URLs)
     - matched_nodes (if node_filter used) - list of node class names that matched
     
-    NOTE: There is no install tool, so instruct the user how to install the nodepack with manager
+    NOTE: Mutating installs and updates are available through the confirmation-gated
+    manager_queue_action / manager_v4_queue_action tools.
     """
     await _report_tool_activity(ctx, "manager_search_nodes")
     
@@ -2650,7 +3060,8 @@ async def manager_check_updates(
         "details": {...} or "message": "No updates available"
     }
     
-    NOTE: This is read-only. To actually update, user must use ComfyUI Manager UI.
+    NOTE: This is read-only discovery. To update, use the confirmation-gated
+    manager_queue_action / manager_v4_queue_action tools.
     """
     await _report_tool_activity(ctx, "manager_check_updates")
     
@@ -2708,13 +3119,9 @@ async def manager_search_external_models(
     - url (direct download link)
     - installed (boolean status)
     
-    NOTE: This tool is READ-ONLY. To install models, instruct user to:
-    1. Open ComfyUI Manager UI
-    2. Go to "Install Models" tab
-    3. Search for the model name
-    4. Click install
-    
-    Or provide the direct download URL for manual installation.
+    NOTE: This tool is READ-ONLY discovery. To install a discovered model, use
+    the confirmation-gated manager_queue_action / manager_v4_queue_action tools
+    with the install-model action and the selected model metadata.
     """
     await _report_tool_activity(ctx, "manager_search_external_models")
     
@@ -2758,6 +3165,8 @@ async def manager_search_external_models(
         ]
         
         return {
+            "success": True,
+            "supported": True,
             "results": results_dict,
             "count": len(results_dict),
             "truncated": len(results_dict) >= request.max_results
@@ -2765,16 +3174,16 @@ async def manager_search_external_models(
         
     except ManagerNotInstalledError as e:
         logger.warning(f"[Manager] Not installed: {e}")
-        return {"error": str(e), "results": [], "count": 0}
+        return {"success": False, "supported": False, "error": str(e), "results": [], "count": 0}
     except ManagerAPIError as e:
         logger.error(f"[Manager] API error: {e}")
-        return {"error": str(e), "results": [], "count": 0}
+        return {"success": False, "supported": False, "error": str(e), "results": [], "count": 0}
     except ManagerConnectionError as e:
         logger.error(f"[Manager] Connection error: {e}")
-        return {"error": str(e), "results": [], "count": 0}
+        return {"success": False, "supported": False, "error": str(e), "results": [], "count": 0}
     except Exception as e:
         logger.error(f"[Manager] Unexpected error: {e}")
-        return {"error": str(e), "results": [], "count": 0}
+        return {"success": False, "supported": False, "error": str(e), "results": [], "count": 0}
 
 # ============================================================================
 # ERROR FEEDBACK & QUEUE STATUS TOOLS

@@ -1,148 +1,69 @@
-"""ComfyUI Manager client for node pack discovery and management.
+"""ComfyUI Manager v4 client for node, model, and queue operations."""
 
-Provides access to ComfyUI Manager's REST API for:
-- Node pack search and discovery
-- Installation status checking
-- Node-to-pack mappings
-- Update checking
-"""
+from __future__ import annotations
 
-import asyncio
+import json
 import logging
+import re
 import time
-from typing import Any, Dict, List, Optional, Literal
+import uuid
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Exceptions
-# ============================================================================
-
 class ManagerError(Exception):
     """Base exception for ComfyUI Manager errors."""
-    pass
 
 
 class ManagerNotInstalledError(ManagerError):
-    """Raised when ComfyUI Manager is not installed."""
-    pass
+    """Raised when ComfyUI Manager is not available."""
 
 
 class ManagerConnectionError(ManagerError):
-    """Raised when ComfyUI server is unreachable."""
-    pass
+    """Raised when ComfyUI is unreachable."""
 
 
 class ManagerAPIError(ManagerError):
     """Raised when Manager API returns an error."""
-    pass
 
-
-# ============================================================================
-# Data Classes
-# ============================================================================
 
 @dataclass
 class NodePackInfo:
-    """Information about a custom node pack."""
     id: str
     name: str
     description: str
     author: str
     repository: str
-    installed: str  # "True", "False", or "Update"
+    installed: str
     updatable: bool
     stars: int
     last_update: str
     category: str
     files: List[str]
-    matched_nodes: Optional[List[str]] = None  # Node class names that matched filter
+    matched_nodes: Optional[List[str]] = None
+
 
 @dataclass
 class ManagerVersion:
-    """ComfyUI Manager version info."""
     version: str
     installed: bool
+    supports_v4: bool = False
 
 
 @dataclass
 class NodeMapping:
-    """Mapping of node type to node pack."""
     node_type: str
     node_pack_id: str
     node_pack_name: str
 
 
 @dataclass
-class ModelInfo:
-    """Information about an installed model file."""
-    name: str                    # Filename without path
-    path: str                    # Relative path from ComfyUI root
-    folder_type: str             # checkpoints, loras, vae, etc.
-    size: int                    # File size in bytes
-    extension: str               # .safetensors, .ckpt, .pt, etc.
-    modified_time: float         # Unix timestamp
-    size_mb: float               # Formatted size in MB
-
-
-# ============================================================================
-# Cache
-# ============================================================================
-
-class ManagerCache:
-    """Cache for Manager API responses."""
-    
-    def __init__(self, ttl_seconds: int = 300):
-        self._cache: Dict[str, Any] = {}
-        self._cache_times: Dict[str, float] = {}
-        self._ttl = ttl_seconds
-        self._lock = asyncio.Lock()
-    
-    async def get(self, key: str) -> Optional[Any]:
-        """Get cached data if valid."""
-        async with self._lock:
-            if key not in self._cache:
-                return None
-            
-            age = time.time() - self._cache_times[key]
-            if age > self._ttl:
-                logger.debug(f"[Manager] Cache expired for {key} (age: {age:.1f}s)")
-                return None
-            
-            logger.debug(f"[Manager] Cache hit for {key} (age: {age:.1f}s)")
-            return self._cache[key]
-    
-    async def set(self, key: str, data: Any):
-        """Set cache data."""
-        async with self._lock:
-            self._cache[key] = data
-            self._cache_times[key] = time.time()
-            logger.debug(f"[Manager] Cache updated for {key}")
-    
-    async def invalidate(self, key: Optional[str] = None):
-        """Clear cache (specific key or all)."""
-        async with self._lock:
-            if key:
-                self._cache.pop(key, None)
-                self._cache_times.pop(key, None)
-                logger.debug(f"[Manager] Cache invalidated for {key}")
-            else:
-                self._cache.clear()
-                self._cache_times.clear()
-                logger.debug("[Manager] Cache cleared")
-
-
-# ============================================================================
-# Core Client
-# ============================================================================
-
-@dataclass
 class ExternalModelInfo:
-    """Information about an external (uninstalled) model."""
     name: str
     filename: str
     type: str
@@ -152,132 +73,168 @@ class ExternalModelInfo:
     save_path: str
     size: str
     url: str
-    installed: bool  # Converted from string
+    installed: bool
+
+
+class ManagerCache:
+    def __init__(self, ttl_seconds: int = 300):
+        self._cache: Dict[str, Any] = {}
+        self._cache_times: Dict[str, float] = {}
+        self._ttl = ttl_seconds
+
+    async def get(self, key: str) -> Optional[Any]:
+        if key not in self._cache:
+            return None
+        if time.time() - self._cache_times[key] > self._ttl:
+            self._cache.pop(key, None)
+            self._cache_times.pop(key, None)
+            return None
+        return self._cache[key]
+
+    async def set(self, key: str, data: Any) -> None:
+        self._cache[key] = data
+        self._cache_times[key] = time.time()
+
+    async def invalidate(self, key: Optional[str] = None) -> None:
+        if key:
+            self._cache.pop(key, None)
+            self._cache_times.pop(key, None)
+            return
+        self._cache.clear()
+        self._cache_times.clear()
+
 
 class ComfyManagerClient:
-    """Client for ComfyUI Manager REST API."""
-    
+    """HTTP client for the built-in ComfyUI Manager v4 API."""
+
     def __init__(self, server_url: str = "http://127.0.0.1:8188", timeout: int = 10):
-        self.server_url = server_url.rstrip('/')
+        self.server_url = server_url.rstrip("/")
         self.timeout = timeout
         self.cache = ManagerCache(ttl_seconds=300)
-        self._manager_installed: Optional[bool] = None
-        self._manager_version: Optional[str] = None
-    
-    async def check_installed(self) -> ManagerVersion:
-        """Check if ComfyUI Manager is installed and get version.
-        
-        Uses /manager/version endpoint probe (Method 2 from research).
-        
-        Returns:
-            ManagerVersion with installation status and version
-            
-        Raises:
-            ManagerConnectionError: If ComfyUI server is unreachable
-        """
-        # Check cache first
-        if self._manager_installed is not None:
-            return ManagerVersion(
-                version=self._manager_version or "unknown",
-                installed=self._manager_installed
-            )
-        
-        url = f"{self.server_url}/manager/version"
-        
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                logger.info(f"[Manager] Checking installation at {url}")
-                response = await client.get(url)
-                
-                if response.status_code == 200:
-                    version = response.text.strip()
-                    self._manager_installed = True
-                    self._manager_version = version
-                    logger.info(f"[Manager] Installed, version: {version}")
-                    return ManagerVersion(version=version, installed=True)
-                elif response.status_code == 404:
-                    # Manager not installed
-                    self._manager_installed = False
-                    logger.warning("[Manager] Not installed (404 on /manager/version)")
-                    return ManagerVersion(version="", installed=False)
-                else:
-                    raise ManagerAPIError(
-                        f"Unexpected response from /manager/version: {response.status_code}"
-                    )
-                    
-        except httpx.TimeoutException:
-            raise ManagerConnectionError(
-                f"ComfyUI server timeout. Is ComfyUI running at {self.server_url}?"
-            )
-        except httpx.RequestError as e:
-            raise ManagerConnectionError(
-                f"Failed to connect to ComfyUI at {self.server_url}: {e}"
-            )
-        except Exception as e:
-            logger.error(f"[Manager] Unexpected error checking installation: {e}")
-            raise ManagerConnectionError(f"Failed to check Manager installation: {e}")
-    
-    async def _ensure_installed(self):
-        """Ensure Manager is installed before making API calls.
-        
-        Raises:
-            ManagerNotInstalledError: If Manager is not installed
-        """
-        version_info = await self.check_installed()
-        if not version_info.installed:
-            raise ManagerNotInstalledError(
-                "ComfyUI Manager is not installed. "
-                "Please install it from: https://github.com/ltdrdata/ComfyUI-Manager"
-            )
-    
-    async def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Any:
-        """Make GET request to Manager API.
-        
-        Args:
-            endpoint: API endpoint (e.g., "/customnode/getlist")
-            params: Query parameters
-            
-        Returns:
-            JSON response data
-            
-        Raises:
-            ManagerAPIError: If API returns error
-            ManagerConnectionError: If connection fails
-        """
+        self._manager_version: Optional[ManagerVersion] = None
+
+    async def _request(
+        self,
+        method: str,
+        endpoint: str,
+        *,
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Optional[Any] = None,
+        timeout: Optional[float] = None,
+    ) -> Any:
         url = f"{self.server_url}{endpoint}"
-        
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                logger.debug(f"[Manager] GET {url} params={params}")
-                response = await client.get(url, params=params)
-                
-                if response.status_code == 200:
-                    return response.json()
-                elif response.status_code == 404:
-                    raise ManagerAPIError(f"Endpoint not found: {endpoint}")
-                elif response.status_code == 403:
-                    raise ManagerAPIError(
-                        f"Access forbidden (security level). Endpoint: {endpoint}"
-                    )
-                else:
-                    raise ManagerAPIError(
-                        f"Manager API error: {response.status_code} for {endpoint}"
-                    )
-                    
-        except httpx.TimeoutException:
-            raise ManagerConnectionError(
-                f"Timeout accessing Manager API: {endpoint}"
-            )
-        except httpx.RequestError as e:
-            raise ManagerConnectionError(
-                f"Failed to connect to Manager API: {e}"
-            )
-        except ManagerAPIError:
+            async with httpx.AsyncClient(timeout=timeout or self.timeout) as client:
+                response = await client.request(method, url, params=params, json=json_data)
+        except httpx.TimeoutException as exc:
+            raise ManagerConnectionError(f"Timeout accessing Manager API: {endpoint}") from exc
+        except httpx.RequestError as exc:
+            raise ManagerConnectionError(f"Failed to connect to Manager API: {exc}") from exc
+
+        if not 200 <= response.status_code < 300:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text
+            raise ManagerAPIError(f"{method} {endpoint} failed with {response.status_code}: {detail}")
+
+        if not response.content:
+            return {"success": True, "status": response.status_code}
+        try:
+            return response.json()
+        except Exception:
+            return {"success": True, "status": response.status_code, "data": response.text}
+
+    async def check_installed(self) -> ManagerVersion:
+        """Check Manager availability using ComfyUI's current /features response."""
+        if self._manager_version is not None:
+            return self._manager_version
+
+        try:
+            features = await self._request("GET", "/features")
+        except ManagerConnectionError:
             raise
-        except Exception as e:
-            logger.error(f"[Manager] Unexpected error on {endpoint}: {e}")
-            raise ManagerAPIError(f"Failed to access {endpoint}: {e}")
-    
+        except ManagerAPIError:
+            self._manager_version = ManagerVersion(version="", installed=False, supports_v4=False)
+            return self._manager_version
+
+        manager_features = (features.get("extension") or {}).get("manager") or {}
+        supports_v4 = bool(manager_features.get("supports_v4"))
+        installed = supports_v4 or bool(manager_features)
+        self._manager_version = ManagerVersion(
+            version="v4" if supports_v4 else "unknown",
+            installed=installed,
+            supports_v4=supports_v4,
+        )
+        return self._manager_version
+
+    async def _ensure_installed(self) -> None:
+        version_info = await self.check_installed()
+        if not version_info.installed or not version_info.supports_v4:
+            raise ManagerNotInstalledError("ComfyUI Manager v4 is not available on this ComfyUI server")
+
+    async def status(self) -> Dict[str, Any]:
+        version = await self.check_installed()
+        queue = None
+        if version.supports_v4:
+            try:
+                queue = await self.queue_status()
+            except ManagerError as exc:
+                queue = {"success": False, "error": str(exc)}
+        return {
+            "installed": version.installed,
+            "supports_v4": version.supports_v4,
+            "version": version.version,
+            "queue": queue,
+        }
+
+    async def list_installed_packs(self, mode: Literal["default", "imported"] = "default") -> Dict[str, Any]:
+        await self._ensure_installed()
+        return await self._request("GET", "/v2/customnode/installed", params={"mode": mode})
+
+    async def queue_status(self, client_id: Optional[str] = None) -> Dict[str, Any]:
+        await self._ensure_installed()
+        params = {"client_id": client_id} if client_id else None
+        return await self._request("GET", "/v2/manager/queue/status", params=params)
+
+    async def queue_start(self) -> Dict[str, Any]:
+        await self._ensure_installed()
+        return await self._request("POST", "/v2/manager/queue/start", json_data={})
+
+    async def queue_reset(self) -> Dict[str, Any]:
+        await self._ensure_installed()
+        return await self._request("POST", "/v2/manager/queue/reset", json_data={})
+
+    async def queue_history_list(self) -> Dict[str, Any]:
+        await self._ensure_installed()
+        return await self._request("GET", "/v2/manager/queue/history_list")
+
+    async def list_snapshots(self) -> Dict[str, Any]:
+        await self._ensure_installed()
+        return await self._request("GET", "/v2/snapshot/getlist")
+
+    async def get_node_mappings(
+        self,
+        mode: Literal["local", "remote", "cache", "nickname"] = "local",
+    ) -> Dict[str, NodeMapping]:
+        await self._ensure_installed()
+        data = await self._request("GET", "/v2/customnode/getmappings", params={"mode": mode})
+
+        mappings: Dict[str, NodeMapping] = {}
+        for pack_id, pack_data in (data or {}).items():
+            if isinstance(pack_data, list) and pack_data:
+                node_list = pack_data[0]
+                metadata = pack_data[1] if len(pack_data) > 1 and isinstance(pack_data[1], dict) else {}
+                pack_name = metadata.get("title_aux") or metadata.get("title") or pack_id
+                if isinstance(node_list, list):
+                    for node_type in node_list:
+                        mappings[str(node_type)] = NodeMapping(
+                            node_type=str(node_type),
+                            node_pack_id=str(pack_id),
+                            node_pack_name=str(pack_name),
+                        )
+        return mappings
+
     async def search_node_packs(
         self,
         query: Optional[str] = None,
@@ -286,203 +243,67 @@ class ComfyManagerClient:
         installed_only: bool = False,
         updates_available: bool = False,
         mode: Literal["local", "remote", "cache"] = "cache",
-        max_results: int = 20
+        max_results: int = 20,
     ) -> List[NodePackInfo]:
-        """Search for node packs by various criteria.
-        
-        Args:
-            query: Text search in name/description/author
-            category: Filter by category
-            node_filter: Regex pattern to match node class names within packs
-            installed_only: Only show installed packs
-            updates_available: Only show packs with updates
-            mode: Data source mode
-            max_results: Maximum results to return
-            
-        Returns:
-            List of matching NodePackInfo (with matched_nodes if node_filter used)
-        """
         await self._ensure_installed()
-        
-        # Check cache for node packs
-        cache_key = f"node_packs_{mode}"
-        cached = await self.cache.get(cache_key)
-        
-        if cached is None:
-            # Fetch from API
-            data = await self._get("/customnode/getlist", params={"mode": mode})
-            
-            # Parse response
-            all_packs = {}
-            raw_packs = data.get("custom_nodes", [])
-            
-            for pack in raw_packs:
-                pack_id = pack.get("title", "").replace(" ", "_")
-                all_packs[pack_id] = NodePackInfo(
-                    id=pack_id,
-                    name=pack.get("title", ""),
-                    description=pack.get("description", ""),
-                    author=pack.get("author", ""),
-                    repository=pack.get("reference", ""),
-                    installed=pack.get("installed", "False"),
-                    updatable=pack.get("installed") == "Update",
-                    stars=pack.get("stars", 0),
-                    last_update=pack.get("last_update", ""),
-                    category=pack.get("category", ""),
-                    files=pack.get("files", []),
-                    matched_nodes=None
-                )
-            
-            # Cache results
-            await self.cache.set(cache_key, all_packs)
-            logger.info(f"[Manager] Fetched {len(all_packs)} node packs (mode={mode})")
-        else:
-            all_packs = cached
-        
-        # If node_filter is specified, fetch node mappings
-        node_to_pack_map = None
+
+        installed = await self.list_installed_packs()
+        packs: Dict[str, NodePackInfo] = {}
+        for name, info in (installed or {}).items():
+            cnr_id = info.get("cnr_id") or ""
+            aux_id = info.get("aux_id") or ""
+            pack_id = cnr_id or aux_id or name
+            packs[pack_id] = NodePackInfo(
+                id=pack_id,
+                name=name,
+                description="",
+                author=(aux_id.split("/", 1)[0] if "/" in aux_id else ""),
+                repository=(f"https://github.com/{aux_id}" if "/" in aux_id else ""),
+                installed="True" if info.get("enabled", True) else "Disabled",
+                updatable=False,
+                stars=0,
+                last_update="",
+                category="installed",
+                files=[],
+            )
+
         if node_filter:
             try:
-                import re
-                node_pattern = re.compile(node_filter, re.IGNORECASE)
-                
-                # Get node mappings (node_type -> pack_id)
+                pattern = re.compile(node_filter, re.IGNORECASE)
                 mappings = await self.get_node_mappings(mode="local")
-                
-                # Invert to pack_id -> [node_types]
-                pack_to_nodes = {}
+                matched_by_pack: Dict[str, List[str]] = {}
                 for node_type, mapping in mappings.items():
-                    pack_id = mapping.node_pack_id
-                    if pack_id not in pack_to_nodes:
-                        pack_to_nodes[pack_id] = []
-                    pack_to_nodes[pack_id].append(node_type)
-                
-                # Filter nodes by pattern
-                node_to_pack_map = {}  # pack_id -> [matched_node_types]
-                for pack_id, node_types in pack_to_nodes.items():
-                    matched = [nt for nt in node_types if node_pattern.search(nt)]
-                    if matched:
-                        node_to_pack_map[pack_id] = matched
-                
-                logger.info(f"[Manager] Node filter matched {len(node_to_pack_map)} packs")
-                
-            except re.error as e:
-                logger.error(f"[Manager] Invalid regex pattern '{node_filter}': {e}")
-                # Continue without node filtering
-                node_to_pack_map = None
-        
-        # Apply filters
-        results = []
-        for pack in all_packs.values():
-            # Node filter (must match first if specified)
-            if node_to_pack_map is not None:
-                if pack.id not in node_to_pack_map:
-                    continue
-                # Add matched nodes to pack info
-                pack.matched_nodes = node_to_pack_map[pack.id]
-            
-            # Text query filter
-            if query:
-                query_lower = query.lower()
-                if not (
-                    query_lower in pack.name.lower() or
-                    query_lower in pack.description.lower() or
-                    query_lower in pack.author.lower()
-                ):
-                    continue
-            
-            # Category filter
-            if category and pack.category.lower() != category.lower():
-                continue
-            
-            # Installation filter
-            if installed_only and pack.installed == "False":
-                continue
-            
-            # Update filter
-            if updates_available and not pack.updatable:
-                continue
-            
-            results.append(pack)
-            
-            if len(results) >= max_results:
-                break
-        
-        logger.info(f"[Manager] Search found {len(results)} packs")
-        return results
-    
-    async def get_node_mappings(
-        self,
-        mode: Literal["local", "remote", "nickname"] = "local"
-    ) -> Dict[str, NodeMapping]:
-        """Get node type to node pack mappings.
-        
-        API returns data in format:
-        {
-            "extension-id": [
-                ["NodeClass1", "NodeClass2", ...],  # List of node types
-                {"author": "...", "description": "..."}  # Metadata
-            ],
-            ...
-        }
-        
-        Args:
-            mode: Mapping source mode
-            
-        Returns:
-            Dictionary mapping node type to NodeMapping
-        """
-        await self._ensure_installed()
-        
-        data = await self._get("/customnode/getmappings", params={"mode": mode})
-        
-        mappings = {}
-        # Iterate over extension-id (pack_id) -> pack_data
-        for pack_id, pack_data in data.items():
-            # pack_data is [node_list, metadata_dict]
-            if isinstance(pack_data, list) and len(pack_data) > 0:
-                node_list = pack_data[0]  # First element is list of node types
-                
-                # Ensure node_list is actually a list
-                if isinstance(node_list, list):
-                    # Map each node type to this pack
-                    for node_type in node_list:
-                        mappings[node_type] = NodeMapping(
-                            node_type=node_type,
-                            node_pack_id=pack_id,
-                            node_pack_name=pack_id  # Could enhance with actual name lookup
-                        )
-        
-        logger.info(f"[Manager] Fetched {len(mappings)} node mappings")
-        return mappings
-    
-    async def check_updates(
-        self,
-        mode: Literal["local", "remote"] = "remote"
-    ) -> Dict[str, Any]:
-        """Check for available updates.
-        
-        Args:
-            mode: Check mode (local or remote)
-            
-        Returns:
-            Update status information
-        """
-        await self._ensure_installed()
-        
-        try:
-            data = await self._get("/customnode/fetch_updates", params={"mode": mode})
-            return {
-                "updates_available": True,
-                "details": data
-            }
-        except ManagerAPIError:
-            # 200 = no updates, 201 = updates available
-            return {
-                "updates_available": False,
-                "message": "No updates available"
-            }
-    
+                    if pattern.search(node_type):
+                        matched_by_pack.setdefault(mapping.node_pack_id, []).append(node_type)
+                for pack_id, matched_nodes in matched_by_pack.items():
+                    packs.setdefault(
+                        pack_id,
+                        NodePackInfo(pack_id, pack_id, "", "", "", "Unknown", False, 0, "", "", []),
+                    ).matched_nodes = matched_nodes
+            except re.error as exc:
+                raise ManagerAPIError(f"Invalid node_filter regex: {exc}") from exc
+
+        results = list(packs.values())
+        if query:
+            query_lower = query.lower()
+            results = [
+                pack for pack in results
+                if query_lower in pack.id.lower()
+                or query_lower in pack.name.lower()
+                or query_lower in pack.description.lower()
+                or query_lower in pack.author.lower()
+                or query_lower in pack.repository.lower()
+            ]
+        if category:
+            results = [pack for pack in results if pack.category.lower() == category.lower()]
+        if installed_only:
+            results = [pack for pack in results if pack.installed != "False"]
+        if updates_available:
+            results = [pack for pack in results if pack.updatable]
+        if node_filter:
+            results = [pack for pack in results if pack.matched_nodes]
+        return results[:max_results]
+
     async def search_external_models(
         self,
         query: Optional[str] = None,
@@ -494,125 +315,163 @@ class ComfyManagerClient:
         uninstalled_only: bool = True,
         installed_only: bool = False,
         max_results: int = 10,
-        mode: Literal["cache", "remote"] = "cache"
+        mode: Literal["cache", "remote"] = "cache",
     ) -> List[ExternalModelInfo]:
-        """Search for external models in Manager registry.
-        
-        Args:
-            query: Regex search across name, description, filename
-            base_filter: Regex filter for base field
-            type_filter: Regex filter for type field  
-            name_filter: Regex filter for name field
-            description_filter: Regex filter for description
-            reference_filter: Regex filter for reference URL
-            uninstalled_only: Only show uninstalled (default: True)
-            installed_only: Only show installed (default: False)
-            max_results: Maximum results (default: 10)
-            mode: Data source (cache or remote)
-            
-        Returns:
-            List of ExternalModelInfo matching criteria
-        """
         await self._ensure_installed()
-        
-        # Check cache
-        cache_key = f"external_models_{mode}"
-        cached = await self.cache.get(cache_key)
-        
-        if cached is None:
-            # Fetch from API
-            data = await self._get("/externalmodel/getlist", params={"mode": mode})
-            
-            # Parse models
-            all_models = []
-            raw_models = data.get("models", [])
-            
-            for model in raw_models:
-                all_models.append(ExternalModelInfo(
-                    name=model.get("name", ""),
-                    filename=model.get("filename", ""),
-                    type=model.get("type", ""),
-                    base=model.get("base", ""),
-                    description=model.get("description", ""),
-                    reference=model.get("reference", ""),
-                    save_path=model.get("save_path", ""),
-                    size=model.get("size", ""),
-                    url=model.get("url", ""),
-                    installed=model.get("installed", "False") == "True"
-                ))
-            
-            await self.cache.set(cache_key, all_models)
-            logger.info(f"[Manager] Fetched {len(all_models)} external models")
-        else:
-            all_models = cached
-        
-        # Apply filters
-        import re
-        results = []
-        
-        for model in all_models:
-            # Installation status filter
+        try:
+            data = await self._request("GET", "/v2/externalmodel/getlist", params={"mode": mode})
+        except ManagerAPIError as exc:
+            if "404" not in str(exc):
+                raise
+            data = self._load_local_external_model_db()
+        raw_models = data.get("models", []) if isinstance(data, dict) else []
+        models = [
+            ExternalModelInfo(
+                name=item.get("name", ""),
+                filename=item.get("filename", ""),
+                type=item.get("type", ""),
+                base=item.get("base", ""),
+                description=item.get("description", ""),
+                reference=item.get("reference", ""),
+                save_path=item.get("save_path", ""),
+                size=item.get("size", ""),
+                url=item.get("url", ""),
+                installed=item.get("installed", "False") == "True",
+            )
+            for item in raw_models
+        ]
+
+        def matches_regex(value: Optional[str], candidate: str) -> bool:
+            if not value:
+                return True
+            try:
+                return bool(re.search(value, candidate or "", re.IGNORECASE))
+            except re.error:
+                return True
+
+        results: List[ExternalModelInfo] = []
+        for model in models:
             if uninstalled_only and model.installed:
                 continue
             if installed_only and not model.installed:
                 continue
-            
-            # General query (across name, description, filename)
-            if query:
-                try:
-                    pattern = re.compile(query, re.IGNORECASE)
-                    if not (pattern.search(model.name) or 
-                            pattern.search(model.description) or 
-                            pattern.search(model.filename)):
-                        continue
-                except re.error:
-                    # Invalid regex, skip this filter
-                    pass
-            
-            # Field-specific filters
-            filter_map = {
-                'base_filter': model.base,
-                'type_filter': model.type,
-                'name_filter': model.name,
-                'description_filter': model.description,
-                'reference_filter': model.reference
-            }
-            
-            skip = False
-            for param_name, field_value in filter_map.items():
-                filter_value = locals().get(param_name)
-                if filter_value:
-                    try:
-                        if not re.search(filter_value, field_value, re.IGNORECASE):
-                            skip = True
-                            break
-                    except re.error:
-                        # Invalid regex, skip this filter
-                        pass
-            
-            if skip:
+            if query and not any(
+                matches_regex(query, value)
+                for value in (model.name, model.description, model.filename)
+            ):
                 continue
-            
+            if not matches_regex(base_filter, model.base):
+                continue
+            if not matches_regex(type_filter, model.type):
+                continue
+            if not matches_regex(name_filter, model.name):
+                continue
+            if not matches_regex(description_filter, model.description):
+                continue
+            if not matches_regex(reference_filter, model.reference):
+                continue
             results.append(model)
-            
             if len(results) >= max_results:
                 break
-        
-        logger.info(f"[Manager] External model search found {len(results)} models")
         return results
 
-# ============================================================================
-# Global Instance
-# ============================================================================
+    def _load_local_external_model_db(self) -> Dict[str, Any]:
+        """Load Manager's packaged model database when v4 omits the HTTP route."""
+        try:
+            import comfyui_manager
+
+            model_db_path = Path(comfyui_manager.__file__).resolve().parent / "model-list.json"
+            with model_db_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not isinstance(data, dict) or not isinstance(data.get("models"), list):
+                raise ManagerAPIError(f"Invalid Manager model database: {model_db_path}")
+            return data
+        except ManagerAPIError:
+            raise
+        except Exception as exc:
+            raise ManagerAPIError(
+                "Manager v4 external model HTTP route is unavailable and the local "
+                f"model database could not be loaded: {exc}"
+            ) from exc
+
+    async def check_updates(self, mode: Literal["local", "remote", "cache"] = "remote") -> Dict[str, Any]:
+        await self._ensure_installed()
+        installed = await self.list_installed_packs()
+        return {
+            "updates_available": False,
+            "message": "Manager v4 removed the legacy fetch_updates API; use confirmed queue actions for updates.",
+            "installed_count": len(installed or {}),
+            "mode": mode,
+        }
+
+    async def queue_action(
+        self,
+        kind: Literal[
+            "install",
+            "update",
+            "fix",
+            "uninstall",
+            "disable",
+            "enable",
+            "install-model",
+            "update-comfyui",
+            "update-all",
+        ],
+        payload: Dict[str, Any],
+        *,
+        client_id: str = "ren",
+        ui_id: Optional[str] = None,
+        start_queue: bool = True,
+    ) -> Dict[str, Any]:
+        await self._ensure_installed()
+        ui_id = ui_id or f"ren_{kind.replace('-', '_')}_{uuid.uuid4().hex[:10]}"
+
+        if kind == "update-all":
+            params = {"client_id": client_id, "ui_id": ui_id}
+            if payload.get("mode"):
+                params["mode"] = payload["mode"]
+            result = await self._request("POST", "/v2/manager/queue/update_all", params=params, json_data={})
+        elif kind == "update-comfyui":
+            params = {"client_id": client_id, "ui_id": ui_id}
+            if "stable" in payload:
+                params["stable"] = payload["stable"]
+            result = await self._request("POST", "/v2/manager/queue/update_comfyui", params=params, json_data={})
+        elif kind == "install-model":
+            body = dict(payload)
+            body.update({"client_id": client_id, "ui_id": ui_id})
+            result = await self._request("POST", "/v2/manager/queue/install_model", json_data=body)
+        else:
+            body = {
+                "ui_id": ui_id,
+                "client_id": client_id,
+                "kind": kind,
+                "params": dict(payload),
+            }
+            result = await self._request("POST", "/v2/manager/queue/task", json_data=body)
+
+        start_result = None
+        if start_queue:
+            start_result = await self.queue_start()
+        await self.cache.invalidate()
+        return {
+            "success": True,
+            "queued": True,
+            "kind": kind,
+            "ui_id": ui_id,
+            "client_id": client_id,
+            "result": result,
+            "queue_start": start_result,
+            "requires_restart": kind in {"install", "update", "fix", "uninstall", "disable", "enable", "update-comfyui", "update-all"},
+        }
+
 
 _comfy_manager_client: Optional[ComfyManagerClient] = None
 
 
 def get_comfy_manager_client(
     server_url: str = "http://127.0.0.1:8188",
-    timeout: int = 10
+    timeout: int = 10,
 ) -> ComfyManagerClient:
-    """Get or create the global ComfyManagerClient instance."""
     global _comfy_manager_client
     if _comfy_manager_client is None:
         _comfy_manager_client = ComfyManagerClient(server_url, timeout)
