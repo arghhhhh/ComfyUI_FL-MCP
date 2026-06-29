@@ -1,5 +1,5 @@
 /**
- * WebSocket Client for FL_JS Agentic System
+ * WebSocket Client for ComfyUI FL-MCP
  * 
  * Features:
  * - Session-based connection with handshake protocol
@@ -63,11 +63,11 @@ class WSClient extends EventEmitter {
         
         // Warn if using default URL (config wasn't provided)
         if (!config.url) {
-            console.warn('[WSClient] Using default WebSocket URL. Config should be fetched from /api/config');
+            console.warn('[FL-MCP WS] Using default WebSocket URL. Config should be fetched from /api/config');
         }
         
-        console.log('[WSClient] Initialized with session:', this.sessionId);
-        console.log('[WSClient] WebSocket URL:', this.config.url);
+        console.log('[FL-MCP WS] Initialized with session:', this.sessionId);
+        console.log('[FL-MCP WS] WebSocket URL:', this.config.url);
     }
 
     /**
@@ -75,11 +75,11 @@ class WSClient extends EventEmitter {
      */
     connect() {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            console.log('[WSClient] Already connected');
+            console.log('[FL-MCP WS] Already connected');
             return;
         }
         
-        console.log(`[WSClient] Connecting to ${this.config.url}...`);
+        console.log(`[FL-MCP WS] Connecting to ${this.config.url}...`);
         
         try {
             this.ws = new WebSocket(this.config.url);
@@ -90,7 +90,7 @@ class WSClient extends EventEmitter {
             this.ws.onmessage = (event) => this.handleMessage(event);
             
         } catch (error) {
-            console.error('[WSClient] Connection error:', error);
+            console.error('[FL-MCP WS] Connection error:', error);
             this.scheduleReconnect();
         }
     }
@@ -99,7 +99,7 @@ class WSClient extends EventEmitter {
      * Handle WebSocket open event
      */
     handleOpen() {
-        console.log('[WSClient] WebSocket connected');
+        console.log('[FL-MCP WS] WebSocket connected');
         this.connected = true;
         
         // Send handshake
@@ -118,7 +118,7 @@ class WSClient extends EventEmitter {
             client_version: this.config.clientVersion,
         };
         
-        console.log('[WSClient] Sending handshake:', handshake);
+        console.log('[FL-MCP WS] Sending handshake:', handshake);
         this.ws.send(JSON.stringify(handshake));
     }
 
@@ -126,7 +126,7 @@ class WSClient extends EventEmitter {
      * Handle WebSocket close event
      */
     handleClose(event) {
-        console.log('[WSClient] WebSocket closed:', event.code, event.reason);
+        console.log('[FL-MCP WS] WebSocket closed:', event.code, event.reason);
         this.connected = false;
         this.handshakeComplete = false;
         
@@ -142,7 +142,7 @@ class WSClient extends EventEmitter {
      * Handle WebSocket error
      */
     handleError(error) {
-        console.error('[WSClient] WebSocket error:', error);
+        console.error('[FL-MCP WS] WebSocket error:', error);
         this.emit('error', error);
     }
 
@@ -152,40 +152,31 @@ class WSClient extends EventEmitter {
     handleMessage(event) {
         try {
             const message = JSON.parse(event.data);
-            console.log('[WSClient] Received message:', message.type);
+            console.log('[FL-MCP WS] Received message:', message.type);
             
-            // Route message based on type
             switch (message.type) {
                 case 'handshake_ack':
                     this.handleHandshakeAck(message);
                     break;
-                    
-                case 'agent_response':
-                    this.emit('agent_response', message);
-                    break;
-                    
+
                 case 'tool_request':
                     this.emit('tool_request', message);
                     break;
-                    
+
                 case 'tool_report':
                     this.emit('tool_report', message);
                     break;
 
-                case 'typing_indicator':
-                    this.emit('typing_indicator', message);
-                    break;
-                    
                 case 'error':
                     this.emit('error', message);
                     break;
-                    
+
                 default:
-                    console.warn('[WSClient] Unknown message type:', message.type);
+                    console.warn('[FL-MCP WS] Unknown message type:', message.type);
             }
             
         } catch (error) {
-            console.error('[WSClient] Error parsing message:', error);
+            console.error('[FL-MCP WS] Error parsing message:', error);
         }
     }
 
@@ -193,7 +184,7 @@ class WSClient extends EventEmitter {
      * Handle handshake acknowledgment
      */
     handleHandshakeAck(message) {
-        console.log('[WSClient] Handshake acknowledged:', message.status);
+        console.log('[FL-MCP WS] Handshake acknowledged:', message.status);
         this.handshakeComplete = true;
         this.reconnectAttempts = 0;
         this.reconnectDelay = this.config.initialReconnectDelay;
@@ -215,16 +206,16 @@ class WSClient extends EventEmitter {
         
         // Queue message if not connected or handshake not complete
         if (!this.connected || !this.handshakeComplete) {
-            console.log('[WSClient] Queueing message:', message.type);
+            console.log('[FL-MCP WS] Queueing message:', message.type);
             this.messageQueue.push(message);
             return;
         }
         
         try {
             this.ws.send(JSON.stringify(message));
-            console.log('[WSClient] Sent message:', message.type);
+            console.log('[FL-MCP WS] Sent message:', message.type);
         } catch (error) {
-            console.error('[WSClient] Error sending message:', error);
+            console.error('[FL-MCP WS] Error sending message:', error);
             this.messageQueue.push(message);
         }
     }
@@ -237,7 +228,7 @@ class WSClient extends EventEmitter {
             return;
         }
         
-        console.log(`[WSClient] Flushing ${this.messageQueue.length} queued messages`);
+        console.log(`[FL-MCP WS] Flushing ${this.messageQueue.length} queued messages`);
         
         while (this.messageQueue.length > 0) {
             const message = this.messageQueue.shift();
@@ -250,7 +241,7 @@ class WSClient extends EventEmitter {
      */
     scheduleReconnect() {
         if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
-            console.error('[WSClient] Max reconnection attempts reached');
+            console.error('[FL-MCP WS] Max reconnection attempts reached');
             this.emit('max_reconnect_reached');
             return;
         }
@@ -258,7 +249,7 @@ class WSClient extends EventEmitter {
         this.reconnectAttempts++;
         
         console.log(
-            `[WSClient] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts} ` +
+            `[FL-MCP WS] Scheduling reconnect attempt ${this.reconnectAttempts}/${this.config.maxReconnectAttempts} ` +
             `in ${this.reconnectDelay}ms`
         );
         
@@ -309,11 +300,11 @@ class WSClient extends EventEmitter {
      */
     setupComfyListeners(comfyApi) {
         this.comfyApi = comfyApi;
-        console.log('[WSClient] Setting up ComfyUI event listeners');
+        console.log('[FL-MCP WS] Setting up ComfyUI event listeners');
         
         // Error events
         this.comfyApi.addEventListener("execution_error", (event) => {
-            console.error('[WSClient] ComfyUI execution error:', event.detail);
+            console.error('[FL-MCP WS] ComfyUI execution error:', event.detail);
             this.send({
                 type: "comfy_error",
                 data: {
@@ -325,7 +316,7 @@ class WSClient extends EventEmitter {
         });
         
         this.comfyApi.addEventListener("execution_interrupted", (event) => {
-            console.warn('[WSClient] ComfyUI execution interrupted:', event.detail);
+            console.warn('[FL-MCP WS] ComfyUI execution interrupted:', event.detail);
             this.send({
                 type: "comfy_error",
                 data: {
@@ -346,7 +337,7 @@ class WSClient extends EventEmitter {
         
         // Execution tracking
         this.comfyApi.addEventListener("execution_start", (event) => {
-            console.log('[WSClient] Execution started:', event.detail.prompt_id);
+            console.log('[FL-MCP WS] Execution started:', event.detail.prompt_id);
             this.send({
                 type: "execution_event",
                 event: "start",
@@ -363,7 +354,7 @@ class WSClient extends EventEmitter {
         });
         
         this.comfyApi.addEventListener("execution_cached", (event) => {
-            console.log('[WSClient] Execution cached:', event.detail);
+            console.log('[FL-MCP WS] Execution cached:', event.detail);
             this.send({
                 type: "execution_event",
                 event: "cached",
@@ -372,7 +363,7 @@ class WSClient extends EventEmitter {
         });
         
         this.comfyApi.addEventListener("execution_success", (event) => {
-            console.log('[WSClient] Execution succeeded:', event.detail.prompt_id);
+            console.log('[FL-MCP WS] Execution succeeded:', event.detail.prompt_id);
             this.send({
                 type: "execution_event",
                 event: "success",
@@ -380,7 +371,7 @@ class WSClient extends EventEmitter {
             });
         });
         
-        console.log('[WSClient] ComfyUI event listeners registered');
+        console.log('[FL-MCP WS] ComfyUI event listeners registered');
     }
 }
 

@@ -1,4 +1,4 @@
-"""Platform-specific terminal launcher for FL_JS backend.
+"""Platform-specific terminal launcher for the FL-MCP backend.
 
 Handles launching the backend server in a separate terminal window across
 Windows, macOS, and Linux platforms.
@@ -40,7 +40,7 @@ class TerminalLauncher:
         self.backend_dir = backend_dir
         self.python_exe = python_exe
         self.port = port
-        self.logger = logging.getLogger("FL_JS.TerminalLauncher")
+        self.logger = logging.getLogger("FL-MCP.TerminalLauncher")
     
     def can_launch_terminal(self) -> Tuple[bool, str]:
         """Check if we can launch a terminal window.
@@ -140,7 +140,7 @@ class TerminalLauncher:
         # Launch new cmd window with title
         # Using 'start' command to open new window
         subprocess.Popen(
-            ['cmd', '/c', 'start', 'FL_JS Backend', 'cmd', '/k', cmd],
+            ['cmd', '/c', 'start', 'FL-MCP Backend', 'cmd', '/k', cmd],
             shell=True,
             creationflags=subprocess.CREATE_NEW_CONSOLE if hasattr(subprocess, 'CREATE_NEW_CONSOLE') else 0,
         )
@@ -201,20 +201,20 @@ end tell
             if terminal == 'gnome-terminal':
                 # gnome-terminal requires -- before bash command
                 subprocess.Popen(
-                    ['gnome-terminal', '--title=FL_JS Backend', '--', 'bash', '-c', cmd]
+                    ['gnome-terminal', '--title=FL-MCP Backend', '--', 'bash', '-c', cmd]
                 )
             elif terminal == 'konsole':
                 subprocess.Popen(
-                    ['konsole', '--title', 'FL_JS Backend', '-e', 'bash', '-c', cmd]
+                    ['konsole', '--title', 'FL-MCP Backend', '-e', 'bash', '-c', cmd]
                 )
             elif terminal == 'xfce4-terminal':
                 subprocess.Popen(
-                    ['xfce4-terminal', '--title=FL_JS Backend', '-e', f'bash -c "{cmd}"']
+                    ['xfce4-terminal', '--title=FL-MCP Backend', '-e', f'bash -c "{cmd}"']
                 )
             elif terminal == 'xterm':
                 # -hold keeps window open after command exits
                 subprocess.Popen(
-                    ['xterm', '-title', 'FL_JS Backend', '-hold', '-e', cmd]
+                    ['xterm', '-title', 'FL-MCP Backend', '-hold', '-e', cmd]
                 )
             else:
                 return False, f"Unknown terminal: {terminal}"

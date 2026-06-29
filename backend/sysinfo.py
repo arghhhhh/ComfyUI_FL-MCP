@@ -1,7 +1,7 @@
-"""System information utilities for FL_JS agent system.
+"""System information utilities for ComfyUI FL-MCP.
 
 Provides OS, Python environment, and virtual environment detection
-to help agents provide platform-specific installation instructions.
+to help MCP clients provide platform-specific installation instructions.
 """
 
 import sys

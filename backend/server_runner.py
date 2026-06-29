@@ -1,4 +1,4 @@
-"""Backend server subprocess manager for FL_JS.
+"""Backend server subprocess manager for ComfyUI FL-MCP.
 
 Handles automatic startup, monitoring, and cleanup of the FastAPI backend server.
 Supports multiple launch modes: terminal window, subprocess, or manual.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 
 class ServerRunner:
-    """Manages FL_JS FastAPI backend server.
+    """Manages the ComfyUI FL-MCP FastAPI bridge server.
     
     Features:
     - Multiple launch modes (terminal/subprocess/manual)
@@ -65,7 +65,7 @@ class ServerRunner:
         self._monitor_thread: Optional[threading.Thread] = None
         
         # Setup logging
-        self.logger = logging.getLogger("FL_JS.ServerRunner")
+        self.logger = logging.getLogger("FL-MCP.ServerRunner")
         
         # Register cleanup handlers (only needed for subprocess mode)
         atexit.register(self.cleanup)
@@ -95,22 +95,22 @@ class ServerRunner:
             log_dir = self.backend_dir / "logs"
             log_dir.mkdir(exist_ok=True)
             
-            log_file = log_dir / "server.log"
+            log_file = log_dir / "fl_mcp_server.log"
             
             # Open in append mode with line buffering
             handle = open(log_file, "a", buffering=1, encoding="utf-8")
             
             # Write startup marker
             handle.write(f"\n{'='*80}\n")
-            handle.write(f"FL_JS Backend Server Started: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            handle.write(f"FL-MCP Backend Server Started: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
             handle.write(f"{'='*80}\n\n")
             handle.flush()
             
-            print(f"[FL_JS] Server logs: {log_file}")
+            print(f"[FL-MCP] Server logs: {log_file}")
             return handle
         
         except Exception as e:
-            print(f"[FL_JS] Warning: Could not setup log file: {e}")
+            print(f"[FL-MCP] Warning: Could not setup log file: {e}")
             return None
     
     def start(self) -> bool:
@@ -121,20 +121,20 @@ class ServerRunner:
         """
         # Check if already running (subprocess mode)
         if self.process is not None:
-            print("[FL_JS] Backend already running (subprocess)")
+            print("[FL-MCP] Backend already running (subprocess)")
             return True
         
         # Check port availability
         if self.is_port_in_use():
-            print(f"[FL_JS] Port {self.port} already in use.")
-            print(f"[FL_JS] Reusing existing Ren backend on port {self.port}.")
+            print(f"[FL-MCP] Port {self.port} already in use.")
+            print(f"[FL-MCP] Reusing existing backend on port {self.port}.")
             self.active_mode = "external"
             return True
         
         # Determine launch method
         if self.launch_mode == "manual":
-            print("[FL_JS] Manual launch mode - not starting backend")
-            print("[FL_JS] To start manually: cd backend && python server.py")
+            print("[FL-MCP] Manual launch mode - not starting backend")
+            print("[FL-MCP] To start manually: cd backend && python server.py")
             return False
         
         elif self.launch_mode == "terminal":
@@ -149,7 +149,7 @@ class ServerRunner:
             return self._launch_as_subprocess()
         
         else:
-            print(f"[FL_JS] Unknown launch mode: {self.launch_mode}")
+            print(f"[FL-MCP] Unknown launch mode: {self.launch_mode}")
             return False
     
     def _launch_in_terminal(self, fallback: bool = True) -> bool:
@@ -161,15 +161,15 @@ class ServerRunner:
         Returns:
             True if started successfully, False otherwise
         """
-        print(f"[FL_JS] Attempting to launch backend in terminal window...")
+        print("[FL-MCP] Attempting to launch backend in terminal window...")
         
         # Import here to avoid import errors if module doesn't exist
         try:
             from backend.terminal_launcher import TerminalLauncher
         except ImportError as e:
-            print(f"[FL_JS] Terminal launcher not available: {e}")
+            print(f"[FL-MCP] Terminal launcher not available: {e}")
             if fallback:
-                print("[FL_JS] Falling back to subprocess mode...")
+                print("[FL-MCP] Falling back to subprocess mode...")
                 return self._launch_as_subprocess()
             return False
         
@@ -184,27 +184,27 @@ class ServerRunner:
         success, message = launcher.launch()
         
         if success:
-            print(f"[FL_JS] {message}")
-            print(f"[FL_JS] Backend starting on port {self.port}...")
-            print(f"[FL_JS] Check the terminal window for logs")
-            print(f"[FL_JS] Close the terminal window to stop the backend")
+            print(f"[FL-MCP] {message}")
+            print(f"[FL-MCP] Backend starting on port {self.port}...")
+            print("[FL-MCP] Check the terminal window for logs")
+            print("[FL-MCP] Close the terminal window to stop the backend")
             
             self.active_mode = "terminal"
             
             # Wait for server to be ready
             if self.wait_for_server(timeout=15):
-                print(f"[FL_JS] Backend server started successfully!")
+                print("[FL-MCP] Backend server started successfully!")
                 return True
             else:
-                print("[FL_JS] Backend server failed to start (timeout)")
-                print("[FL_JS] Check the terminal window for errors")
+                print("[FL-MCP] Backend server failed to start (timeout)")
+                print("[FL-MCP] Check the terminal window for errors")
                 return False
         
         else:
-            print(f"[FL_JS] Terminal launch failed: {message}")
+            print(f"[FL-MCP] Terminal launch failed: {message}")
             
             if fallback:
-                print("[FL_JS] Falling back to subprocess mode...")
+                print("[FL-MCP] Falling back to subprocess mode...")
                 return self._launch_as_subprocess()
             else:
                 return False
@@ -221,11 +221,11 @@ class ServerRunner:
             server_script = self.backend_dir / "server.py"
             
             if not server_script.exists():
-                print(f"[FL_JS] Error: server.py not found at {server_script}")
-                print(f"[FL_JS] Backend directory: {self.backend_dir}")
+                print(f"[FL-MCP] Error: server.py not found at {server_script}")
+                print(f"[FL-MCP] Backend directory: {self.backend_dir}")
                 return False
             
-            print(f"[FL_JS] Starting backend server (subprocess mode) on port {self.port}...")
+            print(f"[FL-MCP] Starting backend server (subprocess mode) on port {self.port}...")
             
             # Setup log file
             self.log_file_handle = self._setup_log_file()
@@ -242,8 +242,8 @@ class ServerRunner:
             
             # Start subprocess
             child_env = os.environ.copy()
-            child_env["FL_JS_PARENT_PID"] = str(os.getpid())
-            child_env["FL_JS_MANAGED_BACKEND"] = "1"
+            child_env["FL_MCP_PARENT_PID"] = str(os.getpid())
+            child_env["FL_MCP_MANAGED_BACKEND"] = "1"
 
             self.process = subprocess.Popen(
                 [python_exe, "-u", str(server_script)],  # -u for unbuffered output
@@ -263,7 +263,7 @@ class ServerRunner:
             
             # Wait for server to be ready
             if self.wait_for_server(timeout=15):
-                print(f"[FL_JS] Backend server started successfully! (PID: {self.process.pid})")
+                print(f"[FL-MCP] Backend server started successfully! (PID: {self.process.pid})")
                 
                 # Start monitoring thread if auto-restart enabled
                 if self.auto_restart:
@@ -271,13 +271,13 @@ class ServerRunner:
                 
                 return True
             else:
-                print("[FL_JS] Backend server failed to start (timeout)")
-                print("[FL_JS] Check backend/logs/server.log for errors")
+                print("[FL-MCP] Backend server failed to start (timeout)")
+                print("[FL-MCP] Check backend/logs/fl_mcp_server.log for errors")
                 self.cleanup()
                 return False
         
         except Exception as e:
-            print(f"[FL_JS] Failed to start backend server: {e}")
+            print(f"[FL-MCP] Failed to start backend server: {e}")
             self.cleanup()
             return False
     
@@ -302,10 +302,10 @@ class ServerRunner:
                             pass
                     
                     # Write to stdout (ComfyUI console)
-                    print(f"[FL_JS Backend] {line.rstrip()}")
+                print(f"[FL-MCP Backend] {line.rstrip()}")
             
             except Exception as e:
-                print(f"[FL_JS] Output capture error: {e}")
+                print(f"[FL-MCP] Output capture error: {e}")
         
         output_thread = threading.Thread(target=capture_output, daemon=True)
         output_thread.start()
@@ -315,7 +315,7 @@ class ServerRunner:
         self._should_monitor = True
         self._monitor_thread = threading.Thread(target=self._monitor_process, daemon=True)
         self._monitor_thread.start()
-        print("[FL_JS] Auto-restart monitoring enabled")
+        print("[FL-MCP] Auto-restart monitoring enabled")
     
     def _monitor_process(self):
         """Monitor process and restart if it crashes."""
@@ -335,16 +335,16 @@ class ServerRunner:
             
             if return_code is not None:
                 # Process has terminated
-                print(f"[FL_JS] Backend process terminated unexpectedly (exit code: {return_code})")
+                print(f"[FL-MCP] Backend process terminated unexpectedly (exit code: {return_code})")
                 
                 # Check restart rate limiting
                 current_time = time.time()
                 restart_times = [t for t in restart_times if current_time - t < restart_window]
                 
                 if len(restart_times) >= max_restarts:
-                    print(f"[FL_JS] Too many restarts ({max_restarts} in {restart_window}s). Giving up.")
-                    print("[FL_JS] Please check backend/logs/server.log for errors.")
-                    print("[FL_JS] Restart ComfyUI to try again.")
+                    print(f"[FL-MCP] Too many restarts ({max_restarts} in {restart_window}s). Giving up.")
+                    print("[FL-MCP] Please check backend/logs/fl_mcp_server.log for errors.")
+                    print("[FL-MCP] Restart ComfyUI to try again.")
                     self._should_monitor = False
                     break
                 
@@ -352,7 +352,7 @@ class ServerRunner:
                 restart_times.append(current_time)
                 restart_count += 1
                 
-                print(f"[FL_JS] Attempting restart ({restart_count})...")
+                print(f"[FL-MCP] Attempting restart ({restart_count})...")
                 
                 # Reset process reference
                 self.process = None
@@ -362,9 +362,9 @@ class ServerRunner:
                 
                 # Restart
                 if not self._launch_as_subprocess():
-                    print("[FL_JS] Restart failed. Will retry on next check.")
+                    print("[FL-MCP] Restart failed. Will retry on next check.")
                 else:
-                    print("[FL_JS] Backend restarted successfully")
+                    print("[FL-MCP] Backend restarted successfully")
     
     def wait_for_server(self, timeout: int = 15) -> bool:
         """Wait for server to become available.
@@ -377,7 +377,7 @@ class ServerRunner:
         """
         start_time = time.time()
         
-        print("[FL_JS] Waiting for backend to be ready...", end="", flush=True)
+        print("[FL-MCP] Waiting for backend to be ready...", end="", flush=True)
         
         while time.time() - start_time < timeout:
             if self.is_port_in_use():
@@ -389,7 +389,7 @@ class ServerRunner:
             # Check if process crashed during startup (subprocess mode only)
             if self.active_mode == "subprocess" and self.process and self.process.poll() is not None:
                 print(" Failed!")
-                print(f"[FL_JS] Process terminated during startup (exit code: {self.process.poll()})")
+                print(f"[FL-MCP] Process terminated during startup (exit code: {self.process.poll()})")
                 return False
             
             time.sleep(0.5)
@@ -411,7 +411,7 @@ class ServerRunner:
         # Only cleanup subprocess if we launched in subprocess mode
         if self.active_mode == "subprocess" and self.process is not None:
             try:
-                print(f"[FL_JS] Terminating backend server (PID: {self.process.pid})...")
+                print(f"[FL-MCP] Terminating backend server (PID: {self.process.pid})...")
                 
                 # Try graceful termination first
                 self.process.terminate()
@@ -419,29 +419,29 @@ class ServerRunner:
                 # Wait up to 5 seconds for graceful shutdown
                 try:
                     self.process.wait(timeout=5)
-                    print("[FL_JS] Backend server terminated gracefully")
+                    print("[FL-MCP] Backend server terminated gracefully")
                 except subprocess.TimeoutExpired:
-                    print("[FL_JS] Backend server did not terminate, killing...")
+                    print("[FL-MCP] Backend server did not terminate, killing...")
                     self.process.kill()
                     self.process.wait()
-                    print("[FL_JS] Backend server killed")
+                    print("[FL-MCP] Backend server killed")
             
             except Exception as e:
-                print(f"[FL_JS] Error during cleanup: {e}")
+                print(f"[FL-MCP] Error during cleanup: {e}")
             
             finally:
                 self.process = None
         
         elif self.active_mode == "terminal":
             # No cleanup needed for terminal mode
-            print("[FL_JS] Terminal mode - no cleanup needed")
-            print("[FL_JS] Close the terminal window to stop the backend")
+            print("[FL-MCP] Terminal mode - no cleanup needed")
+            print("[FL-MCP] Close the terminal window to stop the backend")
         
         # Close log file (subprocess mode only)
         if self.log_file_handle:
             try:
                 self.log_file_handle.write(f"\n{'='*80}\n")
-                self.log_file_handle.write(f"FL_JS Backend Server Stopped: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                self.log_file_handle.write(f"FL-MCP Backend Server Stopped: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
                 self.log_file_handle.write(f"{'='*80}\n\n")
                 self.log_file_handle.close()
             except Exception:

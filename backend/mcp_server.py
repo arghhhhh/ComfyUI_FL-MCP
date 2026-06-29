@@ -1,7 +1,6 @@
 """MCP Server implementation using FastMCP.
 
-This module defines all tools available to the AI agent for controlling
-ComfyUI workflows through WebSocket-based tool execution.
+This module defines MCP tools for controlling and inspecting ComfyUI.
 """
 
 import asyncio
@@ -19,6 +18,7 @@ import httpx
 from fastmcp import FastMCP, Context
 from pydantic import BaseModel, Field, model_validator
 
+from config import settings
 from models import WorkflowQuery
 from comfy_models import (
     ComfyListFoldersRequest, ComfyListFoldersResponse,
@@ -67,7 +67,7 @@ log_level = getattr(logging, log_level_name, logging.INFO)
 
 # Ensure log directory exists (optional)
 os.makedirs("logs", exist_ok=True)
-log_file = "logs/ren_server.log"
+log_file = "logs/fl_mcp_server.log"
 
 # Configure logging to both console and file
 logging.basicConfig(
@@ -79,7 +79,7 @@ logging.basicConfig(
     ],
 )
 
-logger = logging.getLogger("ren_server")
+logger = logging.getLogger("fl_mcp_server")
 logger.info(f"Logger initialized with level: {log_level_name}")
 
 
@@ -229,7 +229,6 @@ async def mcp_lifespan(server: FastMCP) -> AsyncIterator[Any]:
     logger.info(f"FL_MCP_MODE: {os.getenv('FL_MCP_MODE')}")
     
     try:
-        from config import settings
         manager_client = get_comfy_manager_client(
             server_url=settings.comfyui_server_url,
             timeout=settings.comfyui_api_timeout
@@ -245,10 +244,10 @@ async def mcp_lifespan(server: FastMCP) -> AsyncIterator[Any]:
         logger.warning(f"[MCP] Could not check Manager status: {e}")
 
     if os.getenv('FL_MCP_MODE') == 'subprocess':
-        session_id = os.getenv('FL_SESSION_ID')
-        ws_url = os.getenv('FL_WS_URL')
+        session_id = os.getenv('FL_MCP_SESSION_ID')
+        ws_url = os.getenv('FL_MCP_WS_URL')
         if not session_id or not ws_url:
-            logger.error("Missing FL_SESSION_ID or FL_WS_URL environment variables")
+            logger.error("Missing FL_MCP_SESSION_ID or FL_MCP_WS_URL environment variables")
             raise RuntimeError("MCP subprocess not properly configured")
         
         logger.info(f"[MCP] Starting in subprocess mode for session: {session_id}")
@@ -285,25 +284,7 @@ async def mcp_lifespan(server: FastMCP) -> AsyncIterator[Any]:
     }
 
 # Initialize FastMCP server with lifespan
-mcp = FastMCP("FL_Agent Workflow Tools", lifespan=mcp_lifespan)
-
-
-# Legacy callback router support (kept for backwards compatibility)
-_callback_router = None
-
-
-def set_callback_router(router):
-    """Set the callback router instance (legacy).
-    
-    This is kept for backwards compatibility but is no longer used
-    when running in subprocess mode.
-    
-    Args:
-        router: CallbackRouter instance
-    """
-    global _callback_router
-    _callback_router = router
-    logger.info("Callback router set for MCP server (legacy mode)")
+mcp = FastMCP("ComfyUI FL-MCP", lifespan=mcp_lifespan)
 
 
 async def _execute_tool(ctx: Context, tool_name: str, parameters: Dict[str, Any], timeout_ms: Optional[int] = None) -> Dict[str, Any]:
@@ -323,7 +304,15 @@ async def _execute_tool(ctx: Context, tool_name: str, parameters: Dict[str, Any]
     """
     _ws_client = ctx.request_context.lifespan_context['client']
     if _ws_client is None:
-        raise RuntimeError("WebSocket client not initialized. MCP server not running in subprocess mode.")
+        return {
+            "success": False,
+            "error": (
+                "requires_browser_bridge: this tool needs the ComfyUI browser bridge. "
+                "Run the MCP server with FL_MCP_MODE=subprocess, FL_MCP_SESSION_ID, "
+                "and FL_MCP_WS_URL, and keep ComfyUI open in a browser."
+            ),
+            "requires_browser_bridge": True,
+        }
     
     return await _ws_client.execute_tool(
         tool_name=tool_name,
@@ -348,11 +337,16 @@ async def _report_tool_activity(ctx: Context, tool_name: str) -> None:
 
 
 def _comfy_base_url() -> str:
-    try:
-        from config import settings
-        return settings.comfyui_server_url.rstrip("/")
-    except Exception:
-        return os.getenv("COMFYUI_SERVER_URL", "http://127.0.0.1:8188").rstrip("/")
+    return settings.comfyui_server_url.rstrip("/")
+
+
+def _disabled_by_config(flag_name: str) -> Dict[str, Any]:
+    return {
+        "success": False,
+        "error": f"disabled_by_config: set {flag_name}=true to enable this tool.",
+        "disabled_by_config": True,
+        "required_flag": flag_name,
+    }
 
 
 async def _comfy_request(
@@ -440,7 +434,7 @@ class FindNodeRequest(BaseModel):
 class CreateNodeRequest(BaseModel):
     """Request to create a new node.
 
-    Simplified schema for better LLM JSON generation reliability.
+    Simplified schema for better MCP JSON generation reliability.
     Position flattened to x/y fields. Parameters removed - set them separately with set_node_values.
     """
     node_type: str = Field(..., description="ComfyUI node class name (e.g., 'CheckpointLoaderSimple')")
@@ -536,7 +530,7 @@ class GetNodeSlotsRequest(BaseModel):
 class ConnectionSpec(BaseModel):
     """Single connection specification for batch operations.
 
-    Simplified schema for better LLM JSON generation - removed Union types.
+    Simplified schema for better MCP JSON generation - removed Union types.
     Use node IDs (integers) for reliability. Slot names as strings only.
     """
     source_node_id: int = Field(..., description="Source node ID")
@@ -581,7 +575,7 @@ class SetNodeRectRequest(BaseModel):
 class NodeRect(BaseModel):
     """Single node layout specification.
 
-    Flattened schema for better LLM JSON generation - node_id included directly.
+    Flattened schema for better MCP JSON generation - node_id included directly.
     """
     node_id: int = Field(..., description="Node ID to modify")
     x: Optional[float] = Field(None, description="X position (omit to keep current)")
@@ -767,7 +761,7 @@ class ManagerQueueActionRequest(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict, description="Raw Manager payload for that action")
     confirmed: bool = Field(False, description="Must be true to perform install/update/uninstall/disable actions")
     start_queue: bool = Field(True, description="Start the Manager worker queue after enqueueing")
-    client_id: str = Field("ren", description="Manager v4 client identifier")
+    client_id: str = Field("fl-mcp", description="Manager v4 client identifier")
     ui_id: Optional[str] = Field(None, description="Optional Manager v4 task UI ID")
 
 class ManagerInstalledPacksRequest(BaseModel):
@@ -912,9 +906,9 @@ class CustomNodesApplyPatchRequest(BaseModel):
 
 class CustomNodesCreatePackRequest(BaseModel):
     name: str = Field(..., description="Folder/package name for the new custom node pack")
-    node_class: str = Field("RenExampleNode", description="Python class name for the initial node")
-    display_name: str = Field("Ren Example Node", description="Display name in ComfyUI")
-    category: str = Field("Ren", description="ComfyUI node category")
+    node_class: str = Field("FLMCPExampleNode", description="Python class name for the initial node")
+    display_name: str = Field("FL-MCP Example Node", description="Display name in ComfyUI")
+    category: str = Field("FL-MCP", description="ComfyUI node category")
     overwrite: bool = Field(False, description="Allow writing into an existing pack")
 
 
@@ -1186,7 +1180,7 @@ async def workflow_diagram(request: WorkflowDiagramRequest, ctx: Context) -> Dic
 
 @mcp.tool()
 async def frontend_list_commands(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
-    """List registered ComfyUI frontend commands Ren can execute."""
+    """List registered ComfyUI frontend commands the browser bridge can execute."""
     return await _execute_tool(ctx, "frontend_list_commands", {})
 
 
@@ -1211,6 +1205,8 @@ async def workflow_get_current_json(request: WorkflowCurrentJsonRequest, ctx: Co
 @mcp.tool()
 async def workflow_load_json(request: WorkflowLoadJsonRequest, ctx: Context) -> Dict[str, Any]:
     """Load editable workflow JSON into the active ComfyUI canvas."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "workflow_load_json", request.model_dump(), timeout_ms=60000)
 
 
@@ -1235,30 +1231,40 @@ async def workflow_read_file(request: WorkflowPathRequest, ctx: Context) -> Dict
 @mcp.tool()
 async def workflow_save_current(request: WorkflowSaveCurrentRequest, ctx: Context) -> Dict[str, Any]:
     """Save the current workflow to ComfyUI user data."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "workflow_save_current", request.model_dump())
 
 
 @mcp.tool()
 async def workflow_rename_file(request: WorkflowRenameRequest, ctx: Context) -> Dict[str, Any]:
     """Rename or move a saved workflow file in ComfyUI user data."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "workflow_rename_file", request.model_dump())
 
 
 @mcp.tool()
 async def workflow_delete_file(request: WorkflowPathRequest, ctx: Context) -> Dict[str, Any]:
     """Delete a saved workflow file from ComfyUI user data."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "workflow_delete_file", request.model_dump())
 
 
 @mcp.tool()
 async def workflow_close_current(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
     """Close the active ComfyUI workflow tab via the native frontend command."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "workflow_close_current", {})
 
 
 @mcp.tool()
 async def workflow_duplicate_current(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
     """Duplicate the active ComfyUI workflow tab via the native frontend command."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "workflow_duplicate_current", {})
 
 
@@ -1281,6 +1287,8 @@ async def create_nodes(request: CreateNodesRequest, ctx: Context) -> List[Dict[s
 
     This is a TRUE BATCH operation - all nodes are created in a single frontend execution without round-trips per node.
     """
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")  # type: ignore[return-value]
     node_count = len(request.nodes)
     logger.info(f"[BATCH] Creating {node_count} nodes in single batch operation")
 
@@ -1294,36 +1302,48 @@ async def create_nodes(request: CreateNodesRequest, ctx: Context) -> List[Dict[s
 @mcp.tool()
 async def remove_nodes(request: RemoveNodesRequest, ctx: Context) -> Dict[str, Any]:
     """Remove one or more nodes from the workflow."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "remove_nodes", request.model_dump())
 
 
 @mcp.tool()
 async def bypass_nodes(request: BypassNodesRequest, ctx: Context) -> Dict[str, Any]:
     """Bypass (mute) one or more nodes."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "bypass_nodes", request.model_dump())
 
 
 @mcp.tool()
 async def unbypass_nodes(request: UnbypassNodesRequest, ctx: Context) -> Dict[str, Any]:
     """Unbypass (unmute) one or more nodes."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "unbypass_nodes", request.model_dump())
 
 
 @mcp.tool()
 async def pin_nodes(request: PinNodesRequest, ctx: Context) -> Dict[str, Any]:
     """Pin one or more nodes to prevent movement."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "pin_nodes", request.model_dump())
 
 
 @mcp.tool()
 async def unpin_nodes(request: UnpinNodesRequest, ctx: Context) -> Dict[str, Any]:
     """Unpin one or more nodes to allow movement."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "unpin_nodes", request.model_dump())
 
 
 @mcp.tool()
 async def select_nodes(request: SelectNodesRequest, ctx: Context) -> Dict[str, Any]:
     """Select one or more nodes in the UI."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "select_nodes", request.model_dump())
 
 @mcp.tool()
@@ -1355,6 +1375,8 @@ async def focus_on_nodes(request: FocusOnNodesRequest, ctx: Context) -> Dict[str
     RETURNS:
     - fitted_count: Number of nodes fitted in view
     """
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "focus_on_nodes", request.model_dump())
 
 @mcp.tool()
@@ -1373,7 +1395,7 @@ async def take_screenshot(request: TakeScreenshotRequest, ctx: Context) -> Dict[
     
     This tool takes a screenshot of the workflow canvas and saves it to
     output/screenshots/. The screenshot can then be displayed to the user
-    or analyzed by the agent.
+    or analyzed by an MCP client.
     
     USE CASES:
     - Visual documentation: "Show me the workflow"
@@ -1381,7 +1403,7 @@ async def take_screenshot(request: TakeScreenshotRequest, ctx: Context) -> Dict[
     - Debugging: Capture problematic workflow sections for the user to see
     - Sharing: Create shareable workflow images
     
-    The URL can be embedded directly in agent responses:
+    The URL can be embedded directly in MCP client responses:
     ![Screenshot](api/view?filename={filename}&type=output&subfolder=screenshots&rand=0.123)
     """
     result = await _execute_tool(ctx, "take_screenshot", request.model_dump())
@@ -1445,6 +1467,8 @@ async def get_node_values(request: GetNodeValuesRequest, ctx: Context) -> Dict[s
 @mcp.tool()
 async def set_node_values(request: SetNodeValuesRequest, ctx: Context) -> Dict[str, Any]:
     """Set parameter values on a node."""
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "set_node_values", request.model_dump())
 
 
@@ -1476,6 +1500,8 @@ async def connect_nodes(request: ConnectNodesRequest, ctx: Context) -> Dict[str,
     If connection fails, error message includes available slots on both nodes
     and suggestion to use get_node_slots() for discovery.
     """
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "connect_nodes", request.model_dump())
 
 
@@ -1483,7 +1509,7 @@ async def connect_nodes(request: ConnectNodesRequest, ctx: Context) -> Dict[str,
 async def get_node_slots(request: GetNodeSlotsRequest, ctx: Context) -> Dict[str, Any]:
     """Get detailed input and output slot information for a node.
     
-    This tool enables agents to discover exact slot names, types, and connection status
+    This tool enables MCP clients to discover exact slot names, types, and connection status
     before attempting to connect nodes, eliminating guesswork and connection failures.
     
     USE CASES:
@@ -1535,6 +1561,8 @@ async def connect_nodes_batch(request: ConnectNodesBatchRequest, ctx: Context) -
     - error: Error message if failed
     - attempted: Original connection spec if failed
     """
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "connect_nodes_batch", request.model_dump())
 
 
@@ -1559,6 +1587,8 @@ async def auto_connect_workflow(request: AutoConnectWorkflowRequest, ctx: Contex
     - connections: Array of connection details
     - failed: Array of failed connection attempts with reasons
     """
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     return await _execute_tool(ctx, "auto_connect_workflow", request.model_dump())
 
 
@@ -1629,6 +1659,8 @@ async def modify_layout(request: BatchLayoutRequest, ctx: Context) -> List[Dict[
     RETURNS:
     Array of layout results for each modified node with success status.
     """
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")  # type: ignore[return-value]
     return await _execute_tool(ctx, "modify_layout", request.model_dump())
 
 # @mcp.tool()
@@ -1851,6 +1883,8 @@ async def comfy_free_memory(request: ComfyFreeMemoryRequest, ctx: Context) -> Di
 async def comfy_history_delete(request: ComfyHistoryDeleteRequest, ctx: Context) -> Dict[str, Any]:
     """Delete ComfyUI history entries or clear all history."""
     await _report_tool_activity(ctx, "comfy_history_delete")
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     if request.clear_all and request.prompt_ids:
         return {"success": False, "error": "clear_all and prompt_ids are mutually exclusive"}
     payload: Dict[str, Any] = {}
@@ -1874,6 +1908,8 @@ async def comfy_settings_get(request: ComfySettingsGetRequest, ctx: Context) -> 
 async def comfy_settings_set(request: ComfySettingsSetRequest, ctx: Context) -> Dict[str, Any]:
     """Set one or more ComfyUI settings."""
     await _report_tool_activity(ctx, "comfy_settings_set")
+    if not settings.enable_workflow_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_WORKFLOW_WRITES")
     if request.id:
         return await _comfy_request("POST", f"/settings/{request.id}", json_data=request.value)
     if request.settings:
@@ -1888,6 +1924,8 @@ async def manager_queue_action(request: ManagerQueueActionRequest, ctx: Context)
     local ComfyUI installation and often require a restart.
     """
     await _report_tool_activity(ctx, "manager_queue_action")
+    if not settings.enable_manager_mutations:
+        return _disabled_by_config("FL_MCP_ENABLE_MANAGER_MUTATIONS")
     endpoint_map = {
         "install_model": "install-model",
         "update_comfyui": "update-comfyui",
@@ -1936,6 +1974,8 @@ async def manager_queue_status(request: ManagerQueueStatusRequest, ctx: Context)
 async def manager_queue_start(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
     """Start the ComfyUI Manager v4 worker queue."""
     await _report_tool_activity(ctx, "manager_queue_start")
+    if not settings.enable_manager_mutations:
+        return _disabled_by_config("FL_MCP_ENABLE_MANAGER_MUTATIONS")
     manager_client = ctx.request_context.lifespan_context.get('manager_client')
     if not manager_client:
         return {"success": False, "error": "ComfyUI Manager client not initialized"}
@@ -1948,6 +1988,8 @@ async def manager_queue_start(request: GetSystemInfoRequest, ctx: Context) -> Di
 async def manager_queue_reset(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
     """Reset the ComfyUI Manager v4 queue."""
     await _report_tool_activity(ctx, "manager_queue_reset")
+    if not settings.enable_manager_mutations:
+        return _disabled_by_config("FL_MCP_ENABLE_MANAGER_MUTATIONS")
     manager_client = ctx.request_context.lifespan_context.get('manager_client')
     if not manager_client:
         return {"success": False, "error": "ComfyUI Manager client not initialized"}
@@ -2180,29 +2222,9 @@ async def get_system_info(request: GetSystemInfoRequest, ctx: Context) -> Dict[s
 
 
 @mcp.tool()
-async def ren_provider_status(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
-    """Report Ren provider/chat readiness."""
-    await _report_tool_activity(ctx, "ren_provider_status")
-    try:
-        import provider_config
-        status = provider_config.status()
-        provider = status.get("provider")
-        provider_state = (status.get("providers") or {}).get(provider) or {}
-        return {
-            "success": True,
-            "provider": provider,
-            "model": status.get("model"),
-            "configured": bool(provider_state.get("configured")),
-            "status": status,
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e), "configured": False}
-
-
-@mcp.tool()
-async def ren_capability_audit(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
-    """Audit Ren's current ability to control ComfyUI across bridge, provider, Manager, and REST modes."""
-    await _report_tool_activity(ctx, "ren_capability_audit")
+async def mcp_capability_audit(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
+    """Audit FL-MCP bridge, Comfy REST, Manager, assets, and write safety state."""
+    await _report_tool_activity(ctx, "mcp_capability_audit")
     audit: Dict[str, Any] = {}
 
     client = ctx.request_context.lifespan_context.get('client')
@@ -2228,22 +2250,6 @@ async def ren_capability_audit(request: GetSystemInfoRequest, ctx: Context) -> D
         "reason": None if feature_data.get("assets") else "ComfyUI assets feature is disabled",
     }
 
-    try:
-        import provider_config
-        provider_status = provider_config.status()
-        provider = provider_status.get("provider")
-        provider_state = (provider_status.get("providers") or {}).get(provider) or {}
-        configured = bool(provider_state.get("configured"))
-        audit["provider"] = {
-            "available": configured,
-            "state": "available" if configured else "blocked",
-            "provider": provider,
-            "model": provider_status.get("model"),
-            "reason": None if configured else "Selected Ren provider is not configured",
-        }
-    except Exception as e:
-        audit["provider"] = {"available": False, "state": "blocked", "reason": str(e)}
-
     manager_client = ctx.request_context.lifespan_context.get('manager_client')
     if manager_client:
         try:
@@ -2263,6 +2269,16 @@ async def ren_capability_audit(request: GetSystemInfoRequest, ctx: Context) -> D
             "state": "blocked",
             "reason": "Manager client not initialized",
         }
+
+    audit["safety"] = {
+        "available": True,
+        "state": "available",
+        "workflowWrites": settings.enable_workflow_writes,
+        "customNodeWrites": settings.enable_custom_node_writes,
+        "gitWrites": settings.enable_git_writes,
+        "managerMutations": settings.enable_manager_mutations,
+        "comfyProcessControl": settings.enable_comfy_process_control,
+    }
 
     audit["overall"] = {
         "available": {
@@ -2404,7 +2420,7 @@ async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> 
     
     Supports regex pattern filtering on full paths, flexible sorting by multiple
     dimensions (name, size, modified_time, type), sort order control (asc/desc),
-    and result limiting for efficient agent-based file discovery.
+    and result limiting for efficient MCP-based file discovery.
     
     USE CASES:
     - Custom Node Discovery: folder_type="custom_nodes" → List all installed node packs
@@ -2492,7 +2508,7 @@ async def comfy_list_folders(request: ComfyListFoldersRequest, ctx: Context) -> 
 async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> Dict[str, Any]:
     """Read files within ComfyUI for analysis and understanding.
     
-    This tool enables agents to examine ComfyUI files to understand capabilities or debug node settings.
+    This tool enables MCP clients to examine ComfyUI files to understand capabilities or debug node settings.
     
     USE CASES:
     - Node Discovery: Read "custom_nodes/{pack}/__init__.py" → Extract NODE_CLASS_MAPPINGS
@@ -2548,7 +2564,7 @@ async def comfy_read_file(request: ComfyReadFileRequest, ctx: Context) -> Dict[s
 async def comfy_search_resources(request: ComfySearchFilesRequest, ctx: Context) -> Dict[str, Any]:
     """Search for patterns in ComfyUI files to discover functionality.
     
-    This tool enables agents to efficiently discover specific functionality.
+    This tool enables MCP clients to efficiently discover specific functionality.
     - Find installed nodes
     - Find Node Packs
     - Find installed models, LoRAs, etc.
@@ -3459,6 +3475,8 @@ async def custom_nodes_search(request: CustomNodesSearchRequest, ctx: Context) -
 async def custom_nodes_write_file(request: CustomNodesWriteFileRequest, ctx: Context) -> Dict[str, Any]:
     """Write a full file under ComfyUI/custom_nodes. Use carefully; existing files require overwrite=true."""
     await _report_tool_activity(ctx, "custom_nodes_write_file")
+    if not settings.enable_custom_node_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_CUSTOM_NODE_WRITES")
     return _coding_result(coding_write_file, request.path, request.content, request.overwrite)
 
 
@@ -3466,6 +3484,8 @@ async def custom_nodes_write_file(request: CustomNodesWriteFileRequest, ctx: Con
 async def custom_nodes_apply_patch(request: CustomNodesApplyPatchRequest, ctx: Context) -> Dict[str, Any]:
     """Apply a unified diff. Every touched path must remain inside ComfyUI/custom_nodes."""
     await _report_tool_activity(ctx, "custom_nodes_apply_patch")
+    if not settings.enable_custom_node_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_CUSTOM_NODE_WRITES")
     return _coding_result(apply_unified_patch, request.patch)
 
 
@@ -3473,6 +3493,8 @@ async def custom_nodes_apply_patch(request: CustomNodesApplyPatchRequest, ctx: C
 async def custom_nodes_create_pack(request: CustomNodesCreatePackRequest, ctx: Context) -> Dict[str, Any]:
     """Create a new ComfyUI custom node pack with a working starter node."""
     await _report_tool_activity(ctx, "custom_nodes_create_pack")
+    if not settings.enable_custom_node_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_CUSTOM_NODE_WRITES")
     return _coding_result(
         coding_create_pack,
         request.name,
@@ -3508,6 +3530,8 @@ async def custom_nodes_git_diff(request: CustomNodesPathRequest, ctx: Context) -
 async def custom_nodes_git_commit(request: CustomNodesGitCommitRequest, ctx: Context) -> Dict[str, Any]:
     """Commit changes for a path under custom_nodes."""
     await _report_tool_activity(ctx, "custom_nodes_git_commit")
+    if not settings.enable_git_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_GIT_WRITES")
     return _coding_result(coding_git_commit, request.path, request.message)
 
 
@@ -3515,19 +3539,23 @@ async def custom_nodes_git_commit(request: CustomNodesGitCommitRequest, ctx: Con
 async def custom_nodes_git_push(request: CustomNodesPathRequest, ctx: Context) -> Dict[str, Any]:
     """Push the git repo containing a path under custom_nodes."""
     await _report_tool_activity(ctx, "custom_nodes_git_push")
+    if not settings.enable_git_writes:
+        return _disabled_by_config("FL_MCP_ENABLE_GIT_WRITES")
     return _coding_result(coding_git_push, request.path)
 
 
 @mcp.tool()
 async def comfy_restart(request: GetSystemInfoRequest, ctx: Context) -> Dict[str, Any]:
-    """Restart a ComfyUI process managed by Ren daemon mode."""
+    """Restart a ComfyUI process managed by FL-MCP daemon mode."""
     await _report_tool_activity(ctx, "comfy_restart")
+    if not settings.enable_comfy_process_control:
+        return _disabled_by_config("FL_MCP_ENABLE_COMFY_PROCESS_CONTROL")
     return comfy_supervisor.restart()
 
 
 @mcp.tool()
 async def comfy_get_logs(request: ComfyLogsRequest, ctx: Context) -> Dict[str, Any]:
-    """Read recent ComfyUI logs captured by Ren daemon mode."""
+    """Read recent ComfyUI logs captured by FL-MCP daemon mode."""
     await _report_tool_activity(ctx, "comfy_get_logs")
     return comfy_supervisor.logs(limit=request.limit)
 

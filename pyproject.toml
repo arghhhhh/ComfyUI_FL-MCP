@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "fl-js-backend"
+name = "comfyui-fl-mcp"
 version = "0.1.0"
-description = "FL_JS Agentic System Backend - AI-powered ComfyUI workflow assistant"
-authors = ["FL_JS Contributors"]
+description = "MCP server and browser bridge for ComfyUI"
+authors = ["ComfyUI FL-MCP Contributors"]
 readme = "README.md"
 license = "MIT"
 
@@ -10,7 +10,6 @@ license = "MIT"
 python = "^3.11"
 fastapi = "^0.104.1"
 uvicorn = {extras = ["standard"], version = "^0.24.0"}
-pydantic-ai = "^0.0.14"
 fastmcp = "^0.2.0"
 pydantic = "^2.5.0"
 pydantic-settings = "^2.1.0"

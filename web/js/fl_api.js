@@ -1,8 +1,8 @@
 /**
- * FL_API - Clean wrapper around legacy FL_JS functions
+ * FL_API - ComfyUI browser API wrapper
  * 
  * This module provides a promise-based API for interacting with ComfyUI workflows
- * through the legacy FL_JS functions. It handles type conversions, error handling,
+ * through ComfyUI frontend APIs. It handles type conversions, error handling,
  * and provides a consistent interface for the tool executor.
  * 
  * @module fl_api
@@ -12,7 +12,7 @@ import { app } from "../../../../scripts/app.js";
 import { api } from "../../../../scripts/api.js";
 
 /**
- * FL_API class - Wrapper for FL_JS workflow manipulation functions
+ * FL_API class - Wrapper for workflow manipulation functions
  */
 export class FL_API {
     constructor() {

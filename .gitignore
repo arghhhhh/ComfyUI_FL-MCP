@@ -62,7 +62,7 @@ yarn.lock
 
 # Project specific
 sessions/
-.ren/
+.fl_mcp/
 *.db
 *.sqlite
 

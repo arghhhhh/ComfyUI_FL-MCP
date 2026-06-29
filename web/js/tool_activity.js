@@ -1,5 +1,5 @@
 /**
- * Tool Activity Visualization for FL_JS
+ * Tool Activity Visualization for FL-MCP
  * Shows floating cards when tools are executing
  */
 
@@ -240,7 +240,7 @@ export const TOOL_CONFIG = {
     "send_images": {
         icon: "📤",
         label: "Send Images",
-        description: "Sending generated images to chat"
+        description: "Sending generated images"
     },
 
     // Screenshot & Capture

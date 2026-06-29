@@ -1,5 +1,5 @@
 /**
- * Session Manager for FL_JS Agentic System
+ * Session Manager for ComfyUI FL-MCP
  * 
  * Manages session lifecycle:
  * - Generates unique session ID on first load
@@ -10,7 +10,7 @@
 
 class SessionManager {
     constructor() {
-        this.STORAGE_KEY = 'fl_js_session_id';
+        this.STORAGE_KEY = 'fl_mcp_session_id';
         this.sessionId = this.getOrCreateSessionId();
         console.log('[SessionManager] Initialized with session ID:', this.sessionId);
     }

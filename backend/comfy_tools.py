@@ -1,7 +1,7 @@
-"""ComfyUI filesystem utilities for FL_JS agent system.
+"""ComfyUI filesystem utilities for FL-MCP.
 
 Provides secure, deterministic access to ComfyUI directory structure
-for agent-based analysis and discovery.
+for MCP-based analysis and discovery.
 """
 
 import os
@@ -46,7 +46,7 @@ def _bounded_text(text: str, max_chars: int = READ_MAX_CHARS) -> str:
     if len(separated) <= max_chars:
         return separated
     return separated[:max_chars].rstrip() + (
-        f"\n\n[Ren truncated output at {max_chars} characters; "
+            f"\n\n[FL-MCP truncated output at {max_chars} characters; "
         "request a narrower line range or search if more context is needed.]"
     )
 
@@ -109,7 +109,7 @@ class ComfyUITools:
     
     def _find_comfyui_root(self) -> Path:
         """Auto-detect ComfyUI installation directory."""
-        # Get current FL_JS project root
+        # Get current FL-MCP project root
         current_dir = Path(__file__).parent.parent  # backend -> fl_js root
         
         # Check if we have a symlinked ComfyUI in the project

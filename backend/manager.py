@@ -1,4 +1,4 @@
-"""WebSocket connection manager with multi-client session support."""
+"""WebSocket connection manager with MCP and browser bridge support."""
 
 from fastapi import WebSocket
 from typing import Any, Dict, Optional, List
@@ -207,22 +207,17 @@ class ExecutionTracker:
 
 
 class ConnectionManager:
-    """Manages WebSocket connections with session-based routing.
-    
-    Supports multiple connection types per session (frontend, pwa, and mcp).
-    """
+    """Manages WebSocket connections with session-based routing."""
 
     def __init__(
         self,
         session_timeout_seconds: int = 300,  # 5 minutes
     ):
-        # Map session_id -> dict of connection types -> WebSocket
-        # e.g., {"session123": {"frontend": WebSocket, "pwa": WebSocket, "mcp": WebSocket}}
+        # Map session_id -> dict of connection types -> WebSocket.
+        # e.g. {"session123": {"frontend": WebSocket, "mcp": WebSocket}}
         self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
         # Map session_id -> SessionContext
         self.session_contexts: Dict[str, SessionContext] = {}
-        # Map session_id -> Agent instance (populated by agent.py)
-        self.session_agents: Dict[str, Any] = {}  # type: ignore
         # Session timeout
         self.session_timeout = timedelta(seconds=session_timeout_seconds)
         
@@ -240,7 +235,7 @@ class ConnectionManager:
         Args:
             websocket: WebSocket connection
             session_id: Session ID from client
-            connection_type: Type of connection ('frontend', 'pwa', or 'mcp')
+            connection_type: Type of connection ('frontend' or 'mcp')
 
         Returns:
             SessionContext for this session
@@ -271,7 +266,7 @@ class ConnectionManager:
 
         Args:
             session_id: Session ID to disconnect
-            connection_type: Type of connection to disconnect ('frontend', 'pwa', or 'mcp')
+            connection_type: Type of connection to disconnect ('frontend' or 'mcp')
         """
         if session_id in self.active_connections:
             if connection_type in self.active_connections[session_id]:
@@ -291,7 +286,7 @@ class ConnectionManager:
         Args:
             session_id: Target session ID
             message: Message dict to send
-            target: Target connection type ('frontend', 'pwa', 'mcp', or 'all')
+            target: Target connection type ('frontend', 'mcp', or 'all')
 
         Returns:
             True if message was sent to at least one connection, False otherwise
@@ -333,20 +328,6 @@ class ConnectionManager:
         
         return sent
     
-    async def broadcast_to_pwa_clients(self, session_id: str, message: Dict) -> bool:
-        """Broadcast a message to PWA clients for a session.
-        
-        Args:
-            session_id: Session ID to broadcast to
-            message: Message to broadcast
-            
-        Returns:
-            True if message was sent to at least one PWA client, False otherwise
-        """
-        if self.has_connection(session_id, 'pwa'):
-            return await self.send_message(session_id, message, target='pwa')
-        return False
-
     async def send_handshake_ack(
         self, session_id: str, is_reconnect: bool, connection_type: str = 'frontend'
     ) -> None:
@@ -360,7 +341,7 @@ class ConnectionManager:
         message = HandshakeAck(
             session_id=session_id,
             status="reconnected" if is_reconnect else "ready",
-            agent_context=None,  # TODO: Add context if needed
+            bridge_context=None,
         )
         await self.send_message(session_id, message.model_dump(), target=connection_type)
 
@@ -425,9 +406,6 @@ class ConnectionManager:
             # Clean up session context
             if session_id in self.session_contexts:
                 del self.session_contexts[session_id]
-            # Clean up agent instance
-            if session_id in self.session_agents:
-                del self.session_agents[session_id]
             logger.info(f"Cleaned up stale session {session_id}")
 
         return len(stale_sessions)
@@ -484,7 +462,7 @@ class ConnectionManager:
         return None
     
     async def handle_comfy_error(self, data: Dict[str, Any]) -> None:
-        """Handle error from ComfyUI frontend and broadcast to PWA."""
+        """Handle error from ComfyUI frontend and broadcast to MCP clients."""
         error_type = data.get("error_type")
         
         if error_type == "execution_error":
@@ -495,18 +473,18 @@ class ConnectionManager:
                 f"({data.get('node_type')}): {data.get('exception_message')}"
             )
             
-            # Broadcast to PWA clients
+            # Broadcast execution errors to the browser bridge session if present.
             prompt_id = data.get("prompt_id")
             session_id = self._get_session_id_for_prompt(prompt_id)
-            if session_id:
-                await self.broadcast_to_pwa_clients(session_id, {
+            if session_id and self.has_connection(session_id, "frontend"):
+                await self.send_message(session_id, {
                     "type": "execution_error",
                     "prompt_id": prompt_id,
                     "node_id": data.get("node_id"),
                     "node_type": data.get("node_type"),
                     "exception_type": data.get("exception_type"),
                     "exception_message": data.get("exception_message"),
-                })
+                }, target="frontend")
                 
         elif error_type == "execution_interrupted":
             self.error_buffer.add_error(data)
@@ -520,7 +498,7 @@ class ConnectionManager:
         logger.debug(f"Queue status: {data.get('exec_info', {}).get('queue_remaining', 0)} remaining")
         
     async def handle_execution_event(self, event: str, data: Dict[str, Any]) -> None:
-        """Handle execution lifecycle events from ComfyUI and broadcast to PWA."""
+        """Handle execution lifecycle events from ComfyUI and broadcast to MCP clients."""
         if event == "start":
             self.execution_tracker.handle_execution_start(data)
         elif event == "executing":
@@ -530,16 +508,16 @@ class ConnectionManager:
         elif event == "success":
             self.execution_tracker.handle_execution_success(data)
             
-            # Broadcast success to PWA clients
+            # Broadcast success to the browser bridge session if present.
             prompt_id = data.get("prompt_id")
             session_id = self._get_session_id_for_prompt(prompt_id)
-            if session_id:
+            if session_id and self.has_connection(session_id, "frontend"):
                 execution_data = self.execution_tracker.get_execution_state(prompt_id)
-                await self.broadcast_to_pwa_clients(session_id, {
+                await self.send_message(session_id, {
                     "type": "execution_success",
                     "prompt_id": prompt_id,
                     "execution": execution_data,
-                })
+                }, target="frontend")
 
 
 # Global connection manager instance

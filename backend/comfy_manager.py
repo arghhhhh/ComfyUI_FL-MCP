@@ -424,7 +424,7 @@ class ComfyManagerClient:
         start_queue: bool = True,
     ) -> Dict[str, Any]:
         await self._ensure_installed()
-        ui_id = ui_id or f"ren_{kind.replace('-', '_')}_{uuid.uuid4().hex[:10]}"
+        ui_id = ui_id or f"fl_mcp_{kind.replace('-', '_')}_{uuid.uuid4().hex[:10]}"
 
         if kind == "update-all":
             params = {"client_id": client_id, "ui_id": ui_id}

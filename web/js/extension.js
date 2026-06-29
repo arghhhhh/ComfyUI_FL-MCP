@@ -1,334 +1,327 @@
 /**
- * FL_JS Agentic System - ComfyUI Extension
- * 
- * Provides AI-powered workflow assistance via natural language chat interface.
- * Requires FL_JS backend server to be running.
- * 
- * Backend server must be started separately:
- *     cd backend
- *     python server.py
+ * ComfyUI FL-MCP browser bridge.
+ *
+ * The visible UI is intentionally small: it reports bridge/backend state and
+ * recent MCP activity. MCP clients call tools externally; this browser bridge
+ * only executes canvas/workflow actions that require ComfyUI frontend access.
  */
 
 import { app } from "../../scripts/app.js";
 import SessionManager from "./session_manager.js";
 import WSClient from "./ws_client.js";
-import ChatClient from "./chat_client.js";
 import { ToolExecutor } from "./tool_executor.js";
-import { ChatUI } from "./chat_ui.js";
-import { DiagramGenerator } from "./diagram_generator.js";
 import { getToolConfig } from "./tool_activity.js";
 
-let chatUI = null;
 let wsClient = null;
-let chatClient = null;
 let toolExecutor = null;
-let diagramGenerator = null;
+let statusPanel = null;
 
-/**
- * Fetch client configuration from backend
- * @returns {Promise<Object>} Configuration object with ws_url
- */
+async function fetchJson(url, options = {}) {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+        throw new Error(`${url} failed: ${response.status}`);
+    }
+    return await response.json();
+}
+
 async function fetchClientConfig() {
     try {
-        const response = await fetch('/api/config');
-        if (!response.ok) {
-            throw new Error(`Config fetch failed: ${response.status}`);
-        }
-        const config = await response.json();
-        console.log('[FL_JS] Fetched client config:', config);
-        return config;
+        return await fetchJson("/api/config");
     } catch (error) {
-        console.warn('[FL_JS] Failed to fetch config, using defaults:', error);
-        // Fallback to default port 8000
+        console.warn("[FL-MCP] Failed to fetch config, using defaults:", error);
         return {
-            ws_url: 'ws://127.0.0.1:8000/ws',
-            version: 'unknown',
-            ngrok_mode: false,
+            ws_url: "ws://127.0.0.1:8000/ws",
+            version: "unknown",
+            public_url: "http://127.0.0.1:8000",
         };
     }
 }
 
 async function fetchLauncherStatus() {
     try {
-        const response = await fetch('/fl_ren/launcher/status');
-        if (!response.ok) {
-            throw new Error(`Launcher status failed: ${response.status}`);
-        }
-        return await response.json();
+        return await fetchJson("/fl_mcp/launcher/status");
     } catch (error) {
-        console.warn('[FL_JS] Ren launcher status unavailable:', error);
-        return { backendReachable: false, wsUrl: 'ws://127.0.0.1:8000/ws' };
+        console.warn("[FL-MCP] Launcher status unavailable:", error);
+        return { backendReachable: false, wsUrl: "ws://127.0.0.1:8000/ws" };
+    }
+}
+
+class BridgeStatusPanel {
+    constructor(container, sessionManager, wsClient, toolExecutor) {
+        this.container = container;
+        this.sessionManager = sessionManager;
+        this.wsClient = wsClient;
+        this.toolExecutor = toolExecutor;
+        this.launcherStatus = null;
+        this.recentTools = [];
+        this.pollTimer = null;
+        this.render();
+        this.refresh();
+        this.pollTimer = setInterval(() => this.refresh(), 5000);
+    }
+
+    render() {
+        this.container.innerHTML = `
+            <section class="fl-mcp-panel">
+                <header class="fl-mcp-header">
+                    <div>
+                        <div class="fl-mcp-title">FL-MCP</div>
+                        <div class="fl-mcp-subtitle">ComfyUI bridge status</div>
+                    </div>
+                    <span class="fl-mcp-pill" id="fl-mcp-backend-pill">Checking</span>
+                </header>
+
+                <div class="fl-mcp-grid">
+                    <div class="fl-mcp-metric">
+                        <span class="fl-mcp-label">Backend</span>
+                        <strong id="fl-mcp-backend">Unknown</strong>
+                    </div>
+                    <div class="fl-mcp-metric">
+                        <span class="fl-mcp-label">WebSocket</span>
+                        <strong id="fl-mcp-ws">Disconnected</strong>
+                    </div>
+                    <div class="fl-mcp-metric wide">
+                        <span class="fl-mcp-label">Session</span>
+                        <code id="fl-mcp-session"></code>
+                    </div>
+                </div>
+
+                <div class="fl-mcp-actions">
+                    <button class="fl-mcp-button primary" id="fl-mcp-toggle" type="button">Start backend</button>
+                    <button class="fl-mcp-button" id="fl-mcp-reconnect" type="button">Reconnect</button>
+                </div>
+
+                <section class="fl-mcp-activity">
+                    <div class="fl-mcp-section-title">Recent tool activity</div>
+                    <div id="fl-mcp-tools" class="fl-mcp-tools empty">No tool activity yet</div>
+                </section>
+            </section>
+        `;
+
+        this.backendPill = this.container.querySelector("#fl-mcp-backend-pill");
+        this.backendText = this.container.querySelector("#fl-mcp-backend");
+        this.wsText = this.container.querySelector("#fl-mcp-ws");
+        this.sessionText = this.container.querySelector("#fl-mcp-session");
+        this.toggleButton = this.container.querySelector("#fl-mcp-toggle");
+        this.reconnectButton = this.container.querySelector("#fl-mcp-reconnect");
+        this.toolsList = this.container.querySelector("#fl-mcp-tools");
+
+        this.sessionText.textContent = this.sessionManager.getSessionId();
+        this.toggleButton.addEventListener("click", () => this.toggleBackend());
+        this.reconnectButton.addEventListener("click", () => this.reconnect());
+        this.updateConnection();
+    }
+
+    async refresh() {
+        this.launcherStatus = await fetchLauncherStatus();
+        const running = Boolean(this.launcherStatus.backendReachable);
+        this.backendText.textContent = running ? "Running" : "Stopped";
+        this.backendPill.textContent = running ? "Online" : "Offline";
+        this.backendPill.classList.toggle("online", running);
+        this.toggleButton.textContent = running ? "Stop backend" : "Start backend";
+        this.updateConnection();
+    }
+
+    updateConnection() {
+        const connected = Boolean(this.wsClient?.connected && this.wsClient?.handshakeComplete);
+        this.wsText.textContent = connected ? "Connected" : "Disconnected";
+        this.reconnectButton.disabled = !this.launcherStatus?.backendReachable;
+    }
+
+    addTool(toolName, state = "running") {
+        const toolConfig = getToolConfig(toolName);
+        this.recentTools.unshift({
+            toolName,
+            label: toolConfig.label || toolName,
+            state,
+            timestamp: new Date(),
+        });
+        this.recentTools = this.recentTools.slice(0, 12);
+        this.renderTools();
+    }
+
+    completeTool(toolName, success = true) {
+        const match = this.recentTools.find((tool) => tool.toolName === toolName && tool.state === "running");
+        if (match) {
+            match.state = success ? "done" : "failed";
+            match.timestamp = new Date();
+            this.renderTools();
+        }
+    }
+
+    renderTools() {
+        if (!this.recentTools.length) {
+            this.toolsList.className = "fl-mcp-tools empty";
+            this.toolsList.textContent = "No tool activity yet";
+            return;
+        }
+        this.toolsList.className = "fl-mcp-tools";
+        this.toolsList.innerHTML = this.recentTools.map((tool) => `
+            <div class="fl-mcp-tool ${tool.state}">
+                <span>${this.escapeHtml(tool.label)}</span>
+                <em>${tool.state}</em>
+            </div>
+        `).join("");
+    }
+
+    async toggleBackend() {
+        const running = Boolean(this.launcherStatus?.backendReachable);
+        const endpoint = running ? "/fl_mcp/launcher/stop" : "/fl_mcp/launcher/start";
+        this.toggleButton.disabled = true;
+        this.toggleButton.textContent = running ? "Stopping..." : "Starting...";
+        try {
+            this.launcherStatus = await fetchJson(endpoint, { method: "POST" });
+            if (!running && this.launcherStatus?.backendReachable && !this.wsClient.connected) {
+                this.wsClient.connect();
+            }
+        } catch (error) {
+            console.error("[FL-MCP] Backend toggle failed:", error);
+        } finally {
+            this.toggleButton.disabled = false;
+            await this.refresh();
+        }
+    }
+
+    reconnect() {
+        if (this.wsClient?.ws) {
+            this.wsClient.ws.close(1000, "manual reconnect");
+        }
+        this.wsClient.connect();
+    }
+
+    destroy() {
+        if (this.pollTimer) {
+            clearInterval(this.pollTimer);
+            this.pollTimer = null;
+        }
+        this.container.innerHTML = "";
+    }
+
+    escapeHtml(value) {
+        const div = document.createElement("div");
+        div.textContent = String(value);
+        return div.innerHTML;
     }
 }
 
 app.registerExtension({
-    name: "fl_js.agentic_system",
-    
+    name: "fl_mcp.bridge",
+
     async setup() {
-        console.log("[FL_JS] Initializing Agentic System extension...");
-        
+        console.log("[FL-MCP] Initializing browser bridge");
+
         try {
-            // Initialize session manager
             const sessionManager = new SessionManager();
             const sessionId = sessionManager.getSessionId();
-            
-            console.log(`[FL_JS] Session ID: ${sessionId}`);
-            
             const launcherStatus = await fetchLauncherStatus();
-
-            // Fetch configuration from backend when available
             const config = await fetchClientConfig();
             const wsUrl = launcherStatus.wsUrl || config.ws_url;
-            
-            // Initialize WebSocket client with dynamic URL
+
             wsClient = new WSClient(sessionId, {
                 url: wsUrl,
                 heartbeatInterval: 30000,
                 maxReconnectAttempts: 5,
+                clientVersion: "1.0.0-frontend",
             });
-
-            chatClient = new ChatClient(sessionId, {
-                wsUrl,
-            });
-            
-            // Initialize diagram generator
-            diagramGenerator = new DiagramGenerator();
-            console.log("[FL_JS] Diagram generator initialized");
-            
-            // Initialize tool executor
             toolExecutor = new ToolExecutor(wsClient);
-            console.log("[FL_JS] Tool executor initialized");
-            
-            // Set up WebSocket event handlers using new event emitter pattern
-            wsClient.on('connected', () => {
-                console.log("[FL_JS] Connected to backend server");
-            });
-            
-            wsClient.on('disconnected', (event) => {
-                console.log("[FL_JS] Disconnected from backend server:", event.code);
 
-                // Clear active tool chain on disconnect
-                try {
-                    window.FL_JS?.chatUI?.clearToolChain();
-                } catch (error) {
-                    console.warn('[FL_JS] Could not clear tool chain on disconnect:', error);
-                }
-            });
-            
-            wsClient.on('handshake_ack', (message) => {
-                console.log("[FL_JS] Handshake complete:", message.status);
-                if (message.status === 'reconnected') {
-                    console.log("[FL_JS] Reconnected to existing session");
-                }
-                
-                // Setup ComfyUI listeners after handshake
-                if (window.app && window.app.api) {
+            wsClient.on("connected", () => statusPanel?.updateConnection());
+            wsClient.on("disconnected", () => statusPanel?.updateConnection());
+            wsClient.on("handshake_ack", () => {
+                statusPanel?.updateConnection();
+                if (window.app?.api) {
                     wsClient.setupComfyListeners(window.app.api);
                 } else {
-                    console.warn('[FL_JS] ComfyUI API not available yet, will retry');
                     setTimeout(() => {
-                        if (window.app && window.app.api) {
+                        if (window.app?.api) {
                             wsClient.setupComfyListeners(window.app.api);
-                        } else {
-                            console.error('[FL_JS] ComfyUI API still not available');
                         }
                     }, 1000);
                 }
             });
-            
-            wsClient.on('agent_response', (message) => {
-                console.log("[FL_JS] Agent response received:", message.content);
 
-                // Tool executions stay in chat history - no need to hide them
-            });
-            
-            wsClient.on('tool_request', async (message) => {
-                console.log("[FL_JS] ⚡ TOOL REQUEST EVENT FIRED:", message.tool_name, 'request_id:', message.request_id);
-
-                const toolConfig = getToolConfig(message.tool_name);
-
-                // Add tool to breadcrumb chain in chat
-                try {
-                    window.FL_JS?.chatUI?.startToolInChain(
-                        message.tool_name,
-                        toolConfig.icon,
-                        toolConfig.label
-                    );
-                } catch (error) {
-                    console.warn('[FL_JS] Could not start tool in breadcrumb chain:', error);
-                }
-
-                console.log("[FL_JS] ⚡ Calling toolExecutor.executeToolRequest...");
+            wsClient.on("tool_request", async (message) => {
+                statusPanel?.addTool(message.tool_name, "running");
                 try {
                     await toolExecutor.executeToolRequest(message);
-                    console.log("[FL_JS] ⚡ toolExecutor.executeToolRequest completed");
-
-                    // Mark tool as complete in breadcrumb chain
-                    try {
-                        window.FL_JS?.chatUI?.completeToolInChain(message.tool_name);
-                    } catch (error) {
-                        console.warn('[FL_JS] Could not complete tool in chain:', error);
-                    }
+                    statusPanel?.completeTool(message.tool_name, true);
                 } catch (error) {
-                    console.error("[FL_JS] ❌ Error in tool execution:", error);
-                }
-            });
-            
-            // New handler for Python-only tools (no executor needed)
-            wsClient.on('tool_report', (message) => {
-                console.log("[FL_JS] 📊 TOOL REPORT EVENT FIRED:", message.tool_name);
-
-                const toolConfig = getToolConfig(message.tool_name);
-
-                // Add to breadcrumb chain
-                try {
-                    window.FL_JS?.chatUI?.startToolInChain(
-                        message.tool_name,
-                        toolConfig.icon,
-                        toolConfig.label
-                    );
-                    // Mark as complete immediately since Python tools execute instantly
-                    window.FL_JS?.chatUI?.completeToolInChain(message.tool_name);
-                } catch (error) {
-                    console.warn('[FL_JS] Could not add tool to breadcrumb chain:', error);
-                }
-            });
-            
-            wsClient.on('typing_indicator', (message) => {
-                console.log("[FL_JS] Agent is typing...");
-            });
-            
-            wsClient.on('error', (error) => {
-                console.error("[FL_JS] Error:", error);
-
-                // Clear active tool chain on error
-                try {
-                    window.FL_JS?.chatUI?.clearToolChain();
-                } catch (error) {
-                    console.warn('[FL_JS] Could not clear tool chain on error:', error);
+                    console.error("[FL-MCP] Tool execution failed:", error);
+                    statusPanel?.completeTool(message.tool_name, false);
                 }
             });
 
-            wsClient.on('max_reconnect_reached', () => {
-                console.error("[FL_JS] Max reconnection attempts reached. Please check backend server.");
-
-                // Clear active tool chain on max reconnect
-                try {
-                    window.FL_JS?.chatUI?.clearToolChain();
-                } catch (error) {
-                    console.warn('[FL_JS] Could not clear tool chain on max reconnect:', error);
-                }
+            wsClient.on("tool_report", (message) => {
+                statusPanel?.addTool(message.tool_name, "done");
             });
-            
-            // Store instances globally for other modules
-            window.FL_JS = {
+
+            wsClient.on("error", (error) => {
+                console.error("[FL-MCP] WebSocket error:", error);
+                statusPanel?.updateConnection();
+            });
+
+            window.FL_MCP = {
                 sessionManager,
                 wsClient,
-                chatClient,
                 toolExecutor,
-                diagramGenerator,
-                chatUI: null, // Will be set when sidebar is rendered
                 app,
-                version: '0.3.0',
+                version: "0.4.0",
             };
-            
-            // Connect only if the hidden Ren backend is already running. The
-            // sidebar can launch it later through Comfy's launcher route.
+
             if (launcherStatus.backendReachable) {
-                console.log("[FL_JS] Connecting to backend server...");
                 wsClient.connect();
-            } else {
-                console.log("[FL_JS] Ren backend is stopped; waiting for user launch.");
             }
-            
-            console.log("[FL_JS] Extension initialized successfully!");
-            console.log("[FL_JS] Note: Backend server must be running (cd backend && python server.py)");
-            
+            console.log("[FL-MCP] Browser bridge initialized");
         } catch (error) {
-            console.error("[FL_JS] Failed to initialize extension:", error);
+            console.error("[FL-MCP] Failed to initialize browser bridge:", error);
         }
-    },
-    
-    async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        // Hook for modifying node definitions before registration
-        // Currently unused, but available for future enhancements
-    },
-    
-    async nodeCreated(node) {
-        // Hook for when a node instance is created
-        // Currently unused, but available for future enhancements
     },
 });
 
-// Register sidebar tab
 app.registerExtension({
-    name: "fl_js.sidebar",
-    
+    name: "fl_mcp.sidebar",
+
     async setup() {
-        // Wait for app to be ready
-        await new Promise(resolve => {
+        await new Promise((resolve) => {
             if (app.extensionManager) {
                 resolve();
-            } else {
-                const interval = setInterval(() => {
-                    if (app.extensionManager) {
-                        clearInterval(interval);
-                        resolve();
-                    }
-                }, 100);
+                return;
             }
+            const interval = setInterval(() => {
+                if (app.extensionManager) {
+                    clearInterval(interval);
+                    resolve();
+                }
+            }, 100);
         });
 
-        // Custom Stylesheet
         const style = document.createElement("link");
         style.rel = "stylesheet";
         style.href = new URL("./style.css", import.meta.url);
         document.head.appendChild(style);
-        
-        console.log("[FL_JS] Registering sidebar tab...");
-        
-        try {
-            app.extensionManager.registerSidebarTab({
-                id: "fl_js_assistant",
-                icon: "pi pi-comments",
-                title: "Ren",
-                tooltip: "Ren: connect your flow",
-                type: "custom",
-                render: (el) => {
-                    console.log("[FL_JS] Rendering sidebar tab...");
 
-                    // Check if we need to reinitialize (container is empty or chatUI was destroyed)
-                    if (!chatUI || !el.children.length) {
-                        // Clean up existing instance if it exists but container is empty
-                        if (chatUI && !el.children.length) {
-                            console.log("[FL_JS] Container empty, reinitializing chat UI...");
-                            chatUI = null;
-                        }
-
-                        // Create new chat UI instance
-                        chatUI = new ChatUI(el, chatClient, wsClient);
-                        window.FL_JS.chatUI = chatUI;
-                        console.log("[FL_JS] Chat UI initialized with tool activity and breadcrumb chain");
-                    }
-
-                    return el;
-                },
-                destroy: () => {
-                    console.log("[FL_JS] Destroying sidebar tab...");
-                    if (chatUI) {
-                        chatUI.destroy();
-                        chatUI = null;
-                        window.FL_JS.chatUI = null;
-                    }
+        app.extensionManager.registerSidebarTab({
+            id: "fl_mcp_bridge",
+            icon: "pi pi-share-alt",
+            title: "FL-MCP",
+            tooltip: "ComfyUI FL-MCP bridge status",
+            type: "custom",
+            render: (el) => {
+                if (!statusPanel && window.FL_MCP?.sessionManager && wsClient && toolExecutor) {
+                    statusPanel = new BridgeStatusPanel(el, window.FL_MCP.sessionManager, wsClient, toolExecutor);
+                    window.FL_MCP.statusPanel = statusPanel;
                 }
-            });
-            
-            console.log("[FL_JS] Sidebar tab registered successfully!");
-        } catch (error) {
-            console.error("[FL_JS] Failed to register sidebar tab:", error);
-            console.error("[FL_JS] Note: Make sure you're using a ComfyUI version that supports sidebar tabs");
-        }
-    }
+                return el;
+            },
+            destroy: () => {
+                statusPanel?.destroy();
+                statusPanel = null;
+                if (window.FL_MCP) {
+                    window.FL_MCP.statusPanel = null;
+                }
+            },
+        });
+    },
 });
 
-console.log("[FL_JS] Extension module loaded");
+console.log("[FL-MCP] Extension module loaded");

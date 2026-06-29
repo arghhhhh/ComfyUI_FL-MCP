@@ -1,4 +1,4 @@
-"""ComfyUI process supervisor used by Ren daemon mode."""
+"""ComfyUI process supervisor used by FL-MCP daemon mode."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional
 
 
-REN_ROOT = Path(__file__).resolve().parents[1]
+MCP_ROOT = Path(__file__).resolve().parents[1]
 COMFY_ROOT = Path(__file__).resolve().parents[3]
-REN_DIR = REN_ROOT / ".ren"
-CONFIG_PATH = REN_DIR / "config.json"
+MCP_DIR = MCP_ROOT / ".fl_mcp"
+CONFIG_PATH = MCP_DIR / "config.json"
 
 
 class ComfySupervisor:
@@ -44,13 +44,13 @@ class ComfySupervisor:
                 if isinstance(loaded, dict):
                     defaults.update(loaded)
             except Exception as exc:
-                self._append_log(f"Failed to read Ren daemon config: {exc}")
+                self._append_log(f"Failed to read FL-MCP daemon config: {exc}")
         return defaults
 
     def save_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         with self._lock:
             self.config.update({k: v for k, v in config.items() if v is not None})
-            REN_DIR.mkdir(parents=True, exist_ok=True)
+            MCP_DIR.mkdir(parents=True, exist_ok=True)
             CONFIG_PATH.write_text(json.dumps(self.config, indent=2), encoding="utf-8")
             return dict(self.config)
 
@@ -88,7 +88,7 @@ class ComfySupervisor:
             return_code = process.poll() if process else None
             managed_running = bool(process and return_code is None)
             health = self.external_health()
-            mode = os.getenv("FL_REN_MODE", "embedded")
+            mode = os.getenv("FL_MCP_MODE", "embedded")
             return {
                 "mode": mode,
                 "canManageProcess": mode == "daemon" or self._process is not None,
@@ -103,11 +103,11 @@ class ComfySupervisor:
 
     def start(self) -> Dict[str, Any]:
         with self._lock:
-            if os.getenv("FL_REN_MODE", "embedded") != "daemon" and self._process is None:
+            if os.getenv("FL_MCP_MODE", "embedded") != "daemon" and self._process is None:
                 status = self.status()
                 status.update({
                     "success": False,
-                    "error": "Starting ComfyUI requires Ren daemon mode.",
+                    "error": "Starting ComfyUI requires FL-MCP daemon mode.",
                 })
                 return status
             if self._process and self._process.poll() is None:
@@ -119,7 +119,7 @@ class ComfySupervisor:
                 python = Path(sys.executable)
             args = [str(python), *[str(arg) for arg in self.config.get("args", [])]]
             env = os.environ.copy()
-            env["FL_REN_MODE"] = "daemon-child"
+            env["FL_MCP_MODE"] = "daemon-child"
 
             self._append_log(f"Starting ComfyUI: {' '.join(args)}")
             self._process = subprocess.Popen(
@@ -154,11 +154,11 @@ class ComfySupervisor:
     def stop(self, timeout: float = 20.0) -> Dict[str, Any]:
         with self._lock:
             process = self._process
-            if os.getenv("FL_REN_MODE", "embedded") != "daemon" and process is None:
+            if os.getenv("FL_MCP_MODE", "embedded") != "daemon" and process is None:
                 status = self.status()
                 status.update({
                     "success": False,
-                    "error": "Stopping ComfyUI requires Ren daemon mode.",
+                    "error": "Stopping ComfyUI requires FL-MCP daemon mode.",
                 })
                 return status
             if not process or process.poll() is not None:
@@ -175,11 +175,11 @@ class ComfySupervisor:
             return self.status()
 
     def restart(self) -> Dict[str, Any]:
-        if os.getenv("FL_REN_MODE", "embedded") != "daemon" and self._process is None:
+        if os.getenv("FL_MCP_MODE", "embedded") != "daemon" and self._process is None:
             status = self.status()
             status.update({
                 "success": False,
-                "error": "Restarting ComfyUI requires Ren daemon mode.",
+                "error": "Restarting ComfyUI requires FL-MCP daemon mode.",
             })
             return status
         self.stop()

@@ -1,27 +1,15 @@
-# Core Framework
 fastapi
 uvicorn[standard]
 python-multipart
-
-# WebSocket
 websockets
-
-# AI & Tools
-pydantic-ai
 fastmcp
 pydantic
 pydantic-settings
-
-# LLM Providers (install the ones you need)
-openai
-anthropic
-# Gemini support through PydanticAI's built-in integration
-google-generativeai
-
-# Utilities
 python-dotenv
+httpx
 Pillow
-PyYAML>=6.0  # For extra_model_paths.yaml parsing
+PyYAML>=6.0
 
-# Testing
-httpx  # For testing FastAPI
+pytest
+pytest-asyncio
+pytest-cov

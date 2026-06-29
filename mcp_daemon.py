@@ -1,8 +1,4 @@
-"""Run Ren as a standalone backend daemon.
-
-This mode keeps Ren alive independently from ComfyUI so Ren can supervise,
-restart, and inspect Comfy without being killed by the Comfy process.
-"""
+"""Run the ComfyUI FL-MCP bridge as a standalone daemon."""
 
 from __future__ import annotations
 
@@ -20,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 
 def main() -> None:
-    os.environ["FL_REN_MODE"] = "daemon"
+    os.environ["FL_MCP_MODE"] = "daemon"
     from config import settings
 
     uvicorn.run(
