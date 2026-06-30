@@ -8,8 +8,6 @@ MCP server and browser bridge for controlling ComfyUI from MCP-compatible client
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Patreon](https://img.shields.io/badge/Patreon-Support%20Me-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/Machinedelusions)
 
-> **Private beta:** this repository is being refocused as a solid, MCP-first ComfyUI integration for local workflow automation and custom-node development.
-
 ## What It Does
 
 ComfyUI FL-MCP exposes ComfyUI as a tool server for MCP clients such as Claude Desktop, Cursor, Codex, and other agentic development environments.
