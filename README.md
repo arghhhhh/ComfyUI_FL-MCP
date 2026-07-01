@@ -3,16 +3,11 @@
 MCP server and browser bridge for controlling ComfyUI from MCP-compatible clients.
 
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-Custom%20Node-orange?style=for-the-badge)](https://github.com/comfyanonymous/ComfyUI)
-[![MCP](https://img.shields.io/badge/MCP-Server-4B7BEC?style=for-the-badge)](https://modelcontextprotocol.io/)
-[![FastMCP](https://img.shields.io/badge/FastMCP-2.x-00B894?style=for-the-badge)](https://gofastmcp.com/)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Patreon](https://img.shields.io/badge/Patreon-Support%20Me-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/Machinedelusions)
 
 ## Demo
 
 ![ComfyUI FL-MCP demo](assets/fl-mcp-demo.gif)
-
-[Watch the demo video](assets/fl-mcp-demo.webm)
 
 ## What It Does
 
